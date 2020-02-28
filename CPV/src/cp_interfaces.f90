@@ -394,7 +394,7 @@
    INTERFACE ortho_gamma
       SUBROUTINE ortho_gamma_x &
          ( iopt, cp, ngwx, phi, becp_dist, qbecp, nkbx, bephi, qbephi, &
-           nx0, idesc, diff, iter, n, nss, istart )
+           xloc, nx0, idesc, diff, iter, n, nss, istart )
          USE kinds,          ONLY: DP
          IMPLICIT NONE
          INTEGER,  INTENT(IN)  :: iopt
@@ -402,6 +402,7 @@
          INTEGER,  INTENT(IN)  :: n, nss, istart
          COMPLEX(DP) :: phi( :, : ), cp( :, : )
          REAL(DP)    :: bephi( :, : )
+         REAL(DP)    :: xloc( :, : )
          REAL(DP)    :: becp_dist(:,:)
          REAL(DP)    :: qbephi( :, : ), qbecp( :, : )
          INTEGER,  INTENT(IN) :: idesc( : )

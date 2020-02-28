@@ -31,7 +31,7 @@
       REAL(DP)    :: bephi( :, : )
       REAL(DP)    :: becp_dist( :, : )
       REAL(DP)    :: qbephi( :, : ), qbecp( :, : )
-      REAL(DP)    :: x0( nx0, nx0 )
+      REAL(DP)    :: x0( :, : )
       INTEGER,  INTENT(IN)  :: idesc(:)
       INTEGER,  INTENT(OUT) :: iter
       REAL(DP), INTENT(OUT) :: diff
