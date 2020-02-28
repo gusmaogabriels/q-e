@@ -106,6 +106,7 @@
    PUBLIC :: collect_bec
    PUBLIC :: beta_eigr
    PUBLIC :: nlsm1us
+   PUBLIC :: g_beta_eigr
 
    ! ------------------------------------ !
 
@@ -393,17 +394,16 @@
    INTERFACE ortho_gamma
       SUBROUTINE ortho_gamma_x &
          ( iopt, cp, ngwx, phi, becp_dist, qbecp, nkbx, bephi, qbephi, &
-           x0, nx0, idesc, diff, iter, n, nss, istart )
+           nx0, idesc, diff, iter, n, nss, istart )
          USE kinds,          ONLY: DP
          IMPLICIT NONE
          INTEGER,  INTENT(IN)  :: iopt
          INTEGER,  INTENT(IN)  :: ngwx, nkbx, nx0
          INTEGER,  INTENT(IN)  :: n, nss, istart
-         COMPLEX(DP) :: phi( ngwx, n ), cp( ngwx, n )
+         COMPLEX(DP) :: phi( :, : ), cp( :, : )
          REAL(DP)    :: bephi( :, : )
          REAL(DP)    :: becp_dist(:,:)
          REAL(DP)    :: qbephi( :, : ), qbecp( :, : )
-         REAL(DP)    :: x0( nx0, nx0 )
          INTEGER,  INTENT(IN) :: idesc( : )
          INTEGER,  INTENT(OUT) :: iter
          REAL(DP), INTENT(OUT) :: diff
@@ -1025,6 +1025,14 @@
       END SUBROUTINE nlsm1us_x
    END INTERFACE
 
+   INTERFACE g_beta_eigr
+      SUBROUTINE g_beta_eigr_x ( gbeigr, eigr )
+         USE kinds,      ONLY : DP
+         IMPLICIT NONE
+         COMPLEX(DP), INTENT(IN)  :: eigr( :, : )
+         COMPLEX(DP), INTENT(OUT) :: gbeigr( :, :, : )
+      END SUBROUTINE g_beta_eigr_x
+   END INTERFACE
 
 !=----------------------------------------------------------------------------=!
 
