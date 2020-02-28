@@ -27,7 +27,7 @@
       INTEGER,  INTENT(IN)  :: iopt
       INTEGER,  INTENT(IN)  :: ngwx, nkbx, nx0
       INTEGER,  INTENT(IN)  :: n, nss, istart
-      COMPLEX(DP) :: phi( ngwx, n ), cp( ngwx, n )
+      COMPLEX(DP) :: phi( :, : ), cp( :, : )
       REAL(DP)    :: bephi( :, : )
       REAL(DP)    :: becp_dist( :, : )
       REAL(DP)    :: qbephi( :, : ), qbecp( :, : )
