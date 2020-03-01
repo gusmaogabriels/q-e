@@ -127,6 +127,23 @@
          INTEGER,     INTENT(IN)    :: n, nspin
          REAL(DP),    OPTIONAL      :: v1( ldv, * )
       END SUBROUTINE dforce_x
+#if defined (__CUDA)
+      SUBROUTINE dforce_gpu_x( i, bec, vkb, c, df, da, v, ldv, ispin, f, n, nspin )
+         USE kinds,              ONLY: DP
+         USE cudafor
+         IMPLICIT NONE
+         INTEGER,     INTENT(IN)    :: i
+         REAL(DP)                   :: bec(:,:)
+         COMPLEX(DP)                :: vkb(:,:)
+         COMPLEX(DP)                :: c(:,:)
+         COMPLEX(DP)                :: df(:), da(:)
+         INTEGER,     INTENT(IN)    :: ldv
+         REAL(DP), DEVICE           :: v( :, : )
+         INTEGER                    :: ispin( : )
+         REAL(DP)                   :: f( : )
+         INTEGER,     INTENT(IN)    :: n, nspin
+      END SUBROUTINE dforce_gpu_x
+#endif
    END INTERFACE
 
 
@@ -388,13 +405,16 @@
          INTEGER     :: iter
          REAL(DP)    :: bephi(:,:)
          REAL(DP)    :: becp_bgrp(:,:)
+#if defined (__CUDA)
+         ATTRIBUTES( DEVICE ) :: becp_bgrp
+#endif
       END SUBROUTINE
    END INTERFACE
 
    INTERFACE ortho_gamma
       SUBROUTINE ortho_gamma_x &
          ( iopt, cp, ngwx, phi, becp_dist, qbecp, nkbx, bephi, qbephi, &
-           xloc, nx0, idesc, diff, iter, n, nss, istart )
+           nx0, idesc, diff, iter, n, nss, istart )
          USE kinds,          ONLY: DP
          IMPLICIT NONE
          INTEGER,  INTENT(IN)  :: iopt
@@ -402,7 +422,6 @@
          INTEGER,  INTENT(IN)  :: n, nss, istart
          COMPLEX(DP) :: phi( :, : ), cp( :, : )
          REAL(DP)    :: bephi( :, : )
-         REAL(DP)    :: xloc( :, : )
          REAL(DP)    :: becp_dist(:,:)
          REAL(DP)    :: qbephi( :, : ), qbecp( :, : )
          INTEGER,  INTENT(IN) :: idesc( : )
@@ -1024,6 +1043,17 @@
          COMPLEX(DP), INTENT(IN)  :: c( :, : )
          REAL(DP),    INTENT(OUT) :: becp( :, : )
       END SUBROUTINE nlsm1us_x
+#if defined (__CUDA)
+      SUBROUTINE nlsm1us_gpu_x ( n, beigr, c, becp )
+         USE kinds,      ONLY : DP
+         USE cudafor
+         IMPLICIT NONE
+         INTEGER,     INTENT(IN)  :: n
+         COMPLEX(DP), INTENT(IN)  :: beigr( :, : )
+         COMPLEX(DP), INTENT(IN)  :: c( :, : )
+         REAL(DP),    DEVICE, INTENT(OUT) :: becp( :, : )
+      END SUBROUTINE nlsm1us_gpu_x
+#endif
    END INTERFACE
 
    INTERFACE g_beta_eigr
