@@ -18,6 +18,10 @@ MODULE orthogonalize_base
 
       USE kinds
       USE mytime, ONLY : f_wall
+#if defined(__CUDA)
+      USE cudafor
+      USE cublas
+#endif
       
       IMPLICIT NONE
 
@@ -43,7 +47,65 @@ MODULE orthogonalize_base
       PUBLIC :: use_parallel_diag
       PUBLIC :: bec_bgrp2ortho
 
+      REAL(DP), ALLOCATABLE DEVICEATTR :: tmp1(:,:), tmp2(:,:), dd(:,:), tr1(:,:), tr2(:,:)
+      REAL(DP), ALLOCATABLE DEVICEATTR :: con(:,:), x1(:,:)
+
 CONTAINS
+
+   SUBROUTINE allocate_local_arrays(ldx)
+      INTEGER, INTENT(IN) :: ldx
+      IF( ALLOCATED( tr1 ) ) THEN
+         IF( SIZE( tr1, 1 ) /= ldx ) THEN
+            DEALLOCATE( tmp1, tmp2, dd, x1, con )
+            DEALLOCATE( tr1, tr2 )
+         END IF
+      END IF
+      IF( .NOT. ALLOCATED( tr1 ) ) THEN
+         ALLOCATE( tr1(ldx,ldx), tr2(ldx,ldx) )
+         ALLOCATE( tmp1(ldx,ldx), tmp2(ldx,ldx), dd(ldx,ldx), x1(ldx,ldx), con(ldx,ldx) )
+      END IF
+   END SUBROUTINE allocate_local_arrays
+
+   SUBROUTINE deallocate_local_arrays()
+      IF( ALLOCATED( tr1 ) ) DEALLOCATE( tr1 )
+      IF( ALLOCATED( tr2 ) ) DEALLOCATE( tr2 )
+      IF( ALLOCATED( tmp1 ) ) DEALLOCATE( tmp1 )
+      IF( ALLOCATED( tmp2 ) ) DEALLOCATE( tmp2 )
+      IF( ALLOCATED( dd ) ) DEALLOCATE( dd )
+      IF( ALLOCATED( x1 ) ) DEALLOCATE( x1 )
+      IF( ALLOCATED( con ) ) DEALLOCATE( con )
+   END SUBROUTINE deallocate_local_arrays
+
+   SUBROUTINE clear_unused_elements( x, idesc )
+      !
+      !  Clear elements not involved in the orthogonalization
+      !
+      IMPLICIT NONE
+      REAL(DP) DEVICEATTR :: x(:,:)
+      INTEGER, INTENT(IN) :: idesc(:)
+      INTEGER :: nr, nc, i, j
+      INCLUDE 'laxlib.fh'
+      IF( idesc(LAX_DESC_ACTIVE_NODE) < 0 ) then
+         x = 0.0d0
+      ELSE
+         nr = idesc(LAX_DESC_NR)
+         nc = idesc(LAX_DESC_NC)
+!$cuf kernel do(2) <<<*,*>>>
+         do j = nc + 1, SIZE( x, 2 )
+            do i = 1, SIZE( x, 1 )
+               x( i, j ) = 0.0d0
+            end do
+         end do
+!$cuf kernel do(2) <<<*,*>>>
+         do j = 1, SIZE( x, 2 )
+            do i = nr + 1, SIZE( x, 1 )
+               x( i, j ) = 0.0d0
+            end do
+         end do
+      END IF
+   END SUBROUTINE
+
+!  ----------------------------------------------
 
    SUBROUTINE mesure_diag_perf( n )
       !
@@ -188,7 +250,6 @@ CONTAINS
 
 !  ----------------------------------------------
 
-
    SUBROUTINE mesure_mmul_perf( n )
       !
       USE mp_world,    ONLY: world_comm
@@ -238,7 +299,6 @@ CONTAINS
 
       DEALLOCATE( a, c, b )
 
-
 #if defined __MPI
 
       IF( ionode ) THEN
@@ -279,10 +339,6 @@ CONTAINS
       USE control_flags,     ONLY: ortho_eps, ortho_max
       USE mp_bands,          ONLY: intra_bgrp_comm, me_bgrp, nproc_bgrp
       USE mp,                ONLY: mp_sum, mp_max
-#if defined(__CUDA)
-      USE cudafor
-      USE cublas
-#endif
 
       IMPLICIT NONE
 
@@ -302,9 +358,6 @@ CONTAINS
 
       INTEGER :: i, j
       INTEGER :: nr, nc, ir, ic, info
-      REAL(DP), ALLOCATABLE DEVICEATTR :: tmp1(:,:), tmp2(:,:), dd(:,:), tr1(:,:), tr2(:,:)
-      REAL(DP), ALLOCATABLE DEVICEATTR :: con(:,:), x1(:,:)
-      REAL(DP), ALLOCATABLE :: con_h(:,:)
       !
       IF( nss < 1 ) RETURN
 
@@ -320,7 +373,7 @@ CONTAINS
          xloc = 0.0d0
          iter = 0
          go to 100
-      endif
+      END IF
       !
       !  Compute the size of the local block
       !
@@ -332,29 +385,10 @@ CONTAINS
       IF( ldx/= idesc(LAX_DESC_NRCX) ) &
          CALL errore( " ortho_iterate ", " inconsistent dimensions ldx ", ldx )
 
-      ALLOCATE( tr1(ldx,ldx), tr2(ldx,ldx) )
-      ALLOCATE( tmp1(ldx,ldx), tmp2(ldx,ldx), dd(ldx,ldx), x1(ldx,ldx), con(ldx,ldx) )
+      CALL allocate_local_arrays(ldx)
 
-      !  Clear elements not involved in the orthogonalization
-      !
-#if defined(__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
-!$cuf kernel do(2) <<<*,*>>>
-      do j = nc + 1, nx0
-         do i = 1, nx0
-            xloc( i, j ) = 0.0d0
-         end do
-      end do
-!$cuf kernel do(2) <<<*,*>>>
-      do j = 1, nx0
-         do i = nr + 1, nx0
-            xloc( i, j ) = 0.0d0
-         end do
-      end do
-#if defined(__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
+      CALL clear_unused_elements( xloc, idesc )
+      CALL clear_unused_elements( con, idesc )
 
 
       ITERATIVE_LOOP: DO iter = 1, ortho_max
@@ -380,32 +414,15 @@ CONTAINS
          DO i=1,nr
             DO j=1,nc
                x1(i,j) = sig(i,j)-tmp1(i,j)-tr1(i,j)-dd(i,j)
-               con(i,j)= x1(i,j)-tmp2(i,j)-tr2(i,j)
+               con(i,j)= ABS(x1(i,j)-tmp2(i,j)-tr2(i,j))
             END DO
          END DO
          !
          !         x1      = sig      -x0*rho    -x0*rho^t  -x0*tau*x0
          !
-         diff = 0.d0
-#if defined(__CUDA)
-         info = cudaDeviceSynchronize()
-         ALLOCATE(con_h, source=con)
-         DO i=1,nr
-            DO j=1,nc
-               IF(ABS(con_h(i,j)).GT.diff) diff=ABS(con_h(i,j))
-            END DO
-         END DO
-         DEALLOCATE(con_h)
-#else
-         DO i=1,nr
-            DO j=1,nc
-               IF(ABS(con(i,j)).GT.diff) diff=ABS(con(i,j))
-            END DO
-         END DO
-#endif
+         diff = MAXVAL( con )
 
          CALL mp_max( diff, idesc(LAX_DESC_COMM) )
-
 
          IF( diff < ortho_eps ) EXIT ITERATIVE_LOOP
 
@@ -429,9 +446,6 @@ CONTAINS
                tmp1(i,j)=tmp2(i,j)/(diag(i+ir-1)+diag(j+ic-1))
             END DO
          END DO
-#if defined(__CUDA)
-         info = cudaDeviceSynchronize()
-#endif
          !
          !       the following calls do:
          !                       tmp2 = g*ut
@@ -441,11 +455,6 @@ CONTAINS
          CALL sqr_mm_cannon( 'N', 'N', nss, 1.0d0, u,    ldx, tmp2, ldx,  0.0d0, xloc, nx0, idesc) 
          !
       END DO ITERATIVE_LOOP
-
-#if defined(__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
-      DEALLOCATE( tmp1, tmp2, dd, x1, con, tr1, tr2 )
             
 100   CONTINUE
             
@@ -465,10 +474,6 @@ CONTAINS
 !     where s=s(r(t+dt))
 !     routine makes use of c(-q)=c*(q)
 !
-#if defined(__CUDA)
-      USE cudafor
-      USE cublas
-#endif
       USE kinds,              ONLY: DP
       USE uspp,               ONLY: nkb, nkbus
       USE gvecw,              ONLY: ngw
@@ -595,9 +600,6 @@ CONTAINS
          ENDIF
          !
       END IF
-#if defined (__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
       !
       RETURN
    END SUBROUTINE sigset
@@ -614,10 +616,6 @@ CONTAINS
 !     where s=s(r(t+dt)) and s'=s(r(t))
 !     routine makes use of  c(-q)=c*(q)
 !
-#if defined(__CUDA)
-      USE cudafor
-      USE cublas
-#endif
       USE gvecw,              ONLY: ngw
       USE gvect,              ONLY: gstart
       USE uspp,               ONLY: nkb, nkbus
@@ -675,9 +673,6 @@ CONTAINS
       IF( nbgrp > 1 ) THEN
          rho = 0.0d0
       END IF
-#if defined (__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
 
       DO ipc = 1, np(2)
          DO ipr = 1, np(1)
@@ -756,9 +751,6 @@ CONTAINS
          !    now transpose rhos and store the result in distributed array rhot
          !
          CALL sqr_tr_cannon( nss, rho, SIZE(rho,1), rhop, SIZE(rhop,1), idesc )
-#if defined (__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
          !
          !  Compute the symmetric part of rho
          !
@@ -782,9 +774,6 @@ CONTAINS
          !
       END IF
       !
-#if defined (__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
       DEALLOCATE( rhop )
       !
       RETURN
@@ -800,10 +789,6 @@ CONTAINS
 !     where s=s(r(t+dt)) and s'=s(r(t))
 !     routine makes use of c(-q)=c*(q)
 !
-#if defined(__CUDA)
-      USE cudafor
-      USE cublas
-#endif
       USE kinds,              ONLY: DP
       USE uspp,               ONLY: nkb, nkbus
       USE gvecw,              ONLY: ngw
@@ -907,9 +892,6 @@ CONTAINS
          !
       END DO
       !
-#if defined (__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
       DEALLOCATE( taup )
       !
       IF( nbgrp > 1 ) THEN
@@ -935,9 +917,6 @@ CONTAINS
          END IF
 
       ENDIF
-#if defined (__CUDA)
-      info = cudaDeviceSynchronize()
-#endif
       !
       RETURN
    END SUBROUTINE tauset
@@ -977,7 +956,7 @@ CONTAINS
       REAL(DP)    :: bephi( :, : )
       REAL(DP)    :: becp_bgrp( :, : )
 #if defined (__CUDA)
-      ATTRIBUTES( DEVICE ) :: becp_bgrp
+      ATTRIBUTES( DEVICE ) :: becp_bgrp, bephi
 #endif
 
       ! local variables
@@ -1038,7 +1017,7 @@ CONTAINS
             !
             IF( nkbus > 0 )THEN
                ! 
-               ! For the inner loop we need the block of bebhi( :, ic : ic + nc - 1 )
+               ! For the inner loop we need the block of bephi( :, ic : ic + nc - 1 )
                ! this is the same of block bephi( :, ir : ir + nr - 1 ) on processor
                ! with coords ipr == ipc
                !
@@ -1247,7 +1226,7 @@ CONTAINS
       USE kinds,             ONLY: DP
       USE uspp,              ONLY: nkb
       USE mp,                ONLY: mp_sum
-      USE mp_bands,          ONLY: intra_bgrp_comm, me_bgrp, inter_bgrp_comm
+      USE mp_bands,          ONLY: intra_bgrp_comm, me_bgrp, inter_bgrp_comm, nbgrp
       USE electrons_base,    ONLY: nbspx_bgrp, ibgrp_g2l, nspin
       !
       IMPLICIT NONE
@@ -1259,7 +1238,7 @@ CONTAINS
       REAL(DP), INTENT(IN)  :: bec_bgrp(:,:)
       REAL(DP), INTENT(OUT) :: bec_ortho(:,:)
 #if defined (__CUDA)
-      ATTRIBUTES( DEVICE ) :: bec_bgrp
+      ATTRIBUTES( DEVICE ) :: bec_bgrp, bec_ortho
 #endif
       !
       INTEGER :: ir, nr, i, ibgrp_i, nup, leg_ortho
@@ -1271,12 +1250,16 @@ CONTAINS
       IF( idesc( LAX_DESC_ACTIVE_NODE, 1 ) > 0 ) THEN
          ir = idesc(LAX_DESC_IR, 1)
          nr = idesc(LAX_DESC_NR, 1)
-         do i = 1, nr
-            ibgrp_i = ibgrp_g2l( i + ir - 1 )
-            IF( ibgrp_i > 0 ) THEN
-               bec_ortho( :, i ) = bec_bgrp( :, ibgrp_i )
-            END IF
-         end do
+         IF( nbgrp == 1 ) THEN
+            bec_ortho(:,1:nr) = bec_bgrp(:,ir:ir+nr-1)
+         ELSE
+            DO i = 1, nr
+               ibgrp_i = ibgrp_g2l( i + ir - 1 )
+               IF( ibgrp_i > 0 ) THEN
+                  bec_ortho( :, i ) = bec_bgrp( :, ibgrp_i )
+               END IF
+            END DO
+         END IF
       END IF
       !
       IF( nspin == 2 ) THEN
@@ -1284,12 +1267,16 @@ CONTAINS
             nup = idesc(LAX_DESC_N, 1 )
             ir = idesc(LAX_DESC_IR, 2 )
             nr = idesc(LAX_DESC_NR, 2 )
-            do i = 1, nr
-               ibgrp_i = ibgrp_g2l( i + ir - 1 + nup )
-               IF( ibgrp_i > 0 ) THEN
-                  bec_ortho( :, i + nrcx ) = bec_bgrp( :, ibgrp_i )
-               END IF
-            end do
+            IF( nbgrp == 1 ) THEN
+               bec_ortho( :, nrcx+1 : nrcx+nr ) = bec_bgrp( :, nup+ir:nup+ir+nr-1 )
+            ELSE
+               do i = 1, nr
+                  ibgrp_i = ibgrp_g2l( i + ir - 1 + nup )
+                  IF( ibgrp_i > 0 ) THEN
+                     bec_ortho( :, i + nrcx ) = bec_bgrp( :, ibgrp_i )
+                  END IF
+               end do
+            END IF
          END IF
       END IF
       !

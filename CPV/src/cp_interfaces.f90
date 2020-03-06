@@ -107,6 +107,7 @@
    PUBLIC :: beta_eigr
    PUBLIC :: nlsm1us
    PUBLIC :: g_beta_eigr
+   PUBLIC :: dbeta_eigr
 
    ! ------------------------------------ !
 
@@ -406,7 +407,7 @@
          REAL(DP)    :: bephi(:,:)
          REAL(DP)    :: becp_bgrp(:,:)
 #if defined (__CUDA)
-         ATTRIBUTES( DEVICE ) :: becp_bgrp
+         ATTRIBUTES( DEVICE ) :: becp_bgrp, bephi
 #endif
       END SUBROUTINE
    END INTERFACE
@@ -427,6 +428,9 @@
          INTEGER,  INTENT(IN) :: idesc( : )
          INTEGER,  INTENT(OUT) :: iter
          REAL(DP), INTENT(OUT) :: diff
+#if defined (__CUDA)
+         ATTRIBUTES( DEVICE ) :: becp_dist, bephi
+#endif
       END SUBROUTINE
    END INTERFACE
 
@@ -1063,6 +1067,15 @@
          COMPLEX(DP), INTENT(IN)  :: eigr( :, : )
          COMPLEX(DP), INTENT(OUT) :: gbeigr( :, :, : )
       END SUBROUTINE g_beta_eigr_x
+   END INTERFACE
+
+   INTERFACE dbeta_eigr
+      SUBROUTINE dbeta_eigr_x( dbeigr, eigr )
+         USE kinds,      ONLY : DP
+         IMPLICIT NONE
+         COMPLEX(DP), INTENT(IN)  :: eigr( :, : )
+         COMPLEX(DP), INTENT(OUT) :: dbeigr( :, :, :, :)
+      END SUBROUTINE dbeta_eigr_x
    END INTERFACE
 
 !=----------------------------------------------------------------------------=!

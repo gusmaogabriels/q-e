@@ -447,17 +447,25 @@
       ! local
       !
       real(DP) :: sumt, sums(2), ennl_t
-      integer  :: is, iv, jv, ijv, inl, jnl, ia, iss, i
+      integer  :: is, iv, jv, ijv, inl, jnl, ia, iss, i, indv
+#if defined(_OPENMP)
+      INTEGER :: mytid, ntids, omp_get_thread_num, omp_get_num_threads
+#endif
       !
       ennl_t = 0.d0  
       !
+!$omp parallel num_threads(min(4,omp_get_num_threads())) default(none) &
+!$omp shared(nat,ityp,indv_ijkb0,nh,nbsp_bgrp,ispin_bgrp,f_bgrp,bec_bgrp,rhovan,dvan,nspin,ennl_t) &
+!$omp private(ia,is,indv,iv,inl,jv,ijv,jnl,sums,iss,i,sumt)
+!$omp do reduction(+:ennl_t)
       do ia = 1, nat
-         is = ityp(ia)
+         is   = ityp(ia)
+         indv = indv_ijkb0(ia)
          do iv = 1, nh(is)
+            inl = indv + iv
             do jv = iv, nh(is)
                ijv = (jv-1)*jv/2 + iv
-               inl = indv_ijkb0(ia) + iv
-               jnl = indv_ijkb0(ia) + jv
+               jnl = indv + jv
                sums = 0.d0
                do i = 1, nbsp_bgrp
                   iss = ispin_bgrp(i)
@@ -473,6 +481,8 @@
             end do
          end do
       end do
+!$omp end do
+!$omp end parallel
       !
       ennl_val = ennl_t
       !
@@ -592,6 +602,65 @@
       return
    end subroutine calbec_bgrp_x
 
+!-----------------------------------------------------------------------
+SUBROUTINE dbeta_eigr_x( dbeigr, eigr )
+  !-----------------------------------------------------------------------
+  !
+  USE kinds,      ONLY : DP
+  use ions_base,  only : nat, ityp
+  use uspp,       only : nhtol, nkb, dbeta, indv_ijkb0
+  use uspp_param, only : nh, nhm
+  use gvect,      only : gstart
+  use gvecw,      only : ngw
+  !
+  implicit none
+  !
+  include 'laxlib.fh'
+  !
+  complex(DP), intent(out) :: dbeigr( :, :, :, : )
+  complex(DP), intent(in)  :: eigr(:,:)
+  !
+  integer   :: ig, is, iv, ia, l, inl, i, j
+  complex(DP) :: cfact
+  !
+  do j=1,3
+     do i=1,3
+        do ia = 1, nat
+           is = ityp(ia) 
+           inl = indv_ijkb0(ia)
+           do iv=1,nh(is)
+              l=nhtol(iv,is)
+              if (l == 0) then
+                 cfact =   cmplx( 1.0_dp , 0.0_dp )
+              else if (l == 1) then
+                 cfact = - cmplx( 0.0_dp , 1.0_dp )
+              else if (l == 2) then
+                 cfact = - cmplx( 0.0_dp , 1.0_dp )
+                 cfact = cfact * cfact
+              else if (l == 3) then
+                 cfact = - cmplx( 0.0_dp , 1.0_dp )
+                 cfact = cfact * cfact * cfact
+              else
+                 CALL errore(' dbeta_eigr_x ', ' l not implemented ', ABS( l ) )
+              endif
+              !
+              !     q = 0   component (with weight 1.0)
+              if (gstart == 2) then
+                 dbeigr(1,iv+inl,i,j)= cfact*dbeta(1,iv,is,i,j)*eigr(1,ia)
+              end if
+              !     q > 0   components (with weight 2.0)
+              do ig = gstart, ngw
+                 dbeigr(ig,iv+inl,i,j) = 2.0d0*cfact*dbeta(ig,iv,is,i,j)*eigr(ig,ia)
+              end do
+           end do
+        end do
+     end do
+  end do
+  !
+  return
+end subroutine dbeta_eigr_x
+!-----------------------------------------------------------------------
+
 
 !-----------------------------------------------------------------------
 SUBROUTINE caldbec_bgrp_x( eigr, c_bgrp, dbec, idesc )
@@ -614,8 +683,9 @@ SUBROUTINE caldbec_bgrp_x( eigr, c_bgrp, dbec, idesc )
   use uspp_param, only : nh, nhm
   use gvect,      only : gstart
   use gvecw,      only : ngw
-  use electrons_base,     only : nspin, iupdwn, nupdwn, nbspx_bgrp, iupdwn_bgrp, nupdwn_bgrp, &
-                                 ibgrp_g2l, i2gupdwn_bgrp, nbspx, nbsp_bgrp
+  use electrons_base, only : nspin, iupdwn, nupdwn, nbspx_bgrp, iupdwn_bgrp, nupdwn_bgrp, &
+                             ibgrp_g2l, i2gupdwn_bgrp, nbspx, nbsp_bgrp
+  use cp_interfaces,  only : dbeta_eigr
   !
   implicit none
   !
@@ -626,7 +696,7 @@ SUBROUTINE caldbec_bgrp_x( eigr, c_bgrp, dbec, idesc )
   real(DP),    intent(out) :: dbec( :, :, :, : )
   integer, intent(in) :: idesc( :, : )
   !
-  complex(DP), allocatable :: wrk2(:,:)
+  complex(DP), allocatable :: wrk2(:,:,:,:)
   real(DP),    allocatable :: dwrk_bgrp(:,:)
   !
   integer   :: ig, is, iv, ia, l, inl, i, j, ii, iw, iss, nr, ir, istart, nss
@@ -637,47 +707,23 @@ SUBROUTINE caldbec_bgrp_x( eigr, c_bgrp, dbec, idesc )
   !
   dbec = 0.0d0
   !
+  allocate( wrk2( ngw, nkb, 3, 3 ) )
+  allocate( dwrk_bgrp( nkb, nbspx_bgrp ) )
+  !
+  CALL dbeta_eigr( wrk2, eigr )
+  !
   do j=1,3
      do i=1,3
+        IF( ngw > 0 .AND. nkb > 0 ) THEN
+           CALL dgemm( 'T', 'N', nkb, nbsp_bgrp, 2*ngw, 1.0d0, wrk2(1,1,i,j), 2*ngw, &
+                             c_bgrp, 2*ngw, 0.0d0, dwrk_bgrp(1,1), nkb )
+        END IF
+        if( nproc_bgrp > 1 ) then
+           call mp_sum( dwrk_bgrp, intra_bgrp_comm )
+        end if
         do ia = 1, nat
            is = ityp(ia) 
-           allocate( wrk2( ngw, nh(is) ) )
-           allocate( dwrk_bgrp( nh(is), nbspx_bgrp ) )
-
-           do iv=1,nh(is)
-              l=nhtol(iv,is)
-              if (l == 0) then
-                 cfact =   cmplx( 1.0_dp , 0.0_dp )
-              else if (l == 1) then
-                 cfact = - cmplx( 0.0_dp , 1.0_dp )
-              else if (l == 2) then
-                 cfact = - cmplx( 0.0_dp , 1.0_dp )
-                 cfact = cfact * cfact
-              else if (l == 3) then
-                 cfact = - cmplx( 0.0_dp , 1.0_dp )
-                 cfact = cfact * cfact * cfact
-              else
-                 CALL errore(' caldbec  ', ' l not implemented ', ABS( l ) )
-              endif
-              !
-              !     q = 0   component (with weight 1.0)
-              if (gstart == 2) then
-                 wrk2(1,iv)= cfact*dbeta(1,iv,is,i,j)*eigr(1,ia)
-              end if
-              !     q > 0   components (with weight 2.0)
-              do ig = gstart, ngw
-                 wrk2(ig,iv) = 2.0d0*cfact*dbeta(ig,iv,is,i,j)*eigr(ig,ia)
-              end do
-           end do
-           IF( ngw > 0 .AND. nh(is) > 0 ) THEN
-              CALL dgemm( 'T', 'N', nh(is), nbsp_bgrp, 2*ngw, 1.0d0, wrk2, 2*ngw, &
-                             c_bgrp, 2*ngw, 0.0d0, dwrk_bgrp(1,1), nh(is) )
-           END IF
-
-           if( nproc_bgrp > 1 ) then
-              call mp_sum( dwrk_bgrp, intra_bgrp_comm )
-           end if
-
+           inl = indv_ijkb0(ia)
            do iss=1,nspin
               IF( idesc( LAX_DESC_ACTIVE_NODE, iss ) > 0 ) THEN
                  nr = idesc( LAX_DESC_NR, iss )
@@ -688,19 +734,18 @@ SUBROUTINE caldbec_bgrp_x( eigr, c_bgrp, dbec, idesc )
                     ibgrp_i = ibgrp_g2l( ii + ir - 1 + istart - 1 )
                     IF( ibgrp_i > 0 ) THEN
                        do iw = 1, nh(is)
-                          dbec( indv_ijkb0(ia) + iw, ii + (iss-1)*nrcx, i, j ) = dwrk_bgrp( iw, ibgrp_i )
+                          dbec( inl + iw, ii + (iss-1)*nrcx, i, j ) = dwrk_bgrp( inl + iw, ibgrp_i )
                        end do
                     END IF
                  end do
               END IF
            end do
-
-           deallocate( wrk2 )
-           deallocate( dwrk_bgrp )
         end do
      end do
   end do
 
+  deallocate( wrk2 )
+  deallocate( dwrk_bgrp )
   if( nbgrp > 1 ) then
      CALL mp_sum( dbec, inter_bgrp_comm )
   end if
@@ -747,6 +792,11 @@ subroutine dennl_x( bec_bgrp, dbec, drhovan, denl, idesc )
   denl=0.d0
   drhovan=0.0d0
 
+!$omp parallel default(none) &
+!$omp shared(nat,ityp,indv_ijkb0,nh,nbsp_bgrp,ispin_bgrp,f_bgrp,bec_bgrp,drhovan,dvan,nspin,denl) &
+!$omp shared(idesc,iupdwn,nupdwn,ibgrp_g2l,nrcx,dbec) &
+!$omp private(ia,is,iv,inl,jv,ijv,jnl,dsums,iss,i,dsum,ii,ir,k,j,nr,istart,nss,ibgrp)
+!$omp do reduction(+:denl)
   do ia=1,nat
      is = ityp(ia) 
      do iv=1,nh(is)
@@ -789,6 +839,8 @@ subroutine dennl_x( bec_bgrp, dbec, drhovan, denl, idesc )
         end do
      end do
   end do
+!$omp end do
+!$omp end parallel
 
   CALL mp_sum( denl,    intra_bgrp_comm )
   CALL mp_sum( drhovan, intra_bgrp_comm )
@@ -832,7 +884,7 @@ subroutine nlfq_bgrp_x( c_bgrp, eigr, bec_bgrp, becdr_bgrp, fion )
   REAL(DP),    INTENT(OUT)  ::  becdr_bgrp( :, :, : )
   REAL(DP),    INTENT(OUT) ::  fion( :, : )
   !
-  integer  :: k, is, ia, inl, iv, jv, i
+  integer  :: k, is, ia, inl, jnl, iv, jv, i
   real(DP) :: temp
   real(DP) :: sum_tmpdr
   !
@@ -855,17 +907,17 @@ subroutine nlfq_bgrp_x( c_bgrp, eigr, bec_bgrp, becdr_bgrp, fion )
 !$omp parallel default(none), &
 !$omp shared(becdr_bgrp,bec_bgrp,fion_loc,f_bgrp,deeq,dvan,nbsp_bgrp,indv_ijkb0,nh, &
 !$omp        nat,nhm,nbspx_bgrp,ispin_bgrp,nproc_bgrp,me_bgrp,ityp), &
-!$omp private(tmpbec,tmpdr,is,ia,iv,jv,k,inl,temp,i,mytid,ntids,sum_tmpdr)
+!$omp private(tmpbec,tmpdr,is,ia,iv,jv,k,inl,jnl,temp,i,mytid,ntids,sum_tmpdr)
 
 #if defined(_OPENMP)
   mytid = omp_get_thread_num()  ! take the thread ID
   ntids = omp_get_num_threads() ! take the number of threads
 #endif
 
-  allocate ( tmpbec( nhm, nbspx_bgrp ), tmpdr( nhm, nbspx_bgrp ) )
+  allocate ( tmpbec( nbspx_bgrp, nhm ), tmpdr( nbspx_bgrp, nhm ) )
 
   DO k = 1, 3
-     DO ia=1,nat
+     DO ia = 1, nat
         is = ityp(ia)
 
         ! better if we distribute to MPI tasks too!
@@ -878,29 +930,27 @@ subroutine nlfq_bgrp_x( c_bgrp, eigr, bec_bgrp, becdr_bgrp, fion )
         IF( MOD( ( ia + (k-1)*nat ) / nproc_bgrp, ntids ) /= mytid ) CYCLE
 #endif  
         tmpbec = 0.d0
-        tmpdr  = 0.d0
-
-        do iv=1,nh(is)
-           do jv=1,nh(is)
-              inl = indv_ijkb0(ia) + jv
+        do jv=1,nh(is)
+           jnl = indv_ijkb0(ia) + jv
+           do iv=1,nh(is)
               do i = 1, nbsp_bgrp
                  temp = dvan(iv,jv,is) + deeq(jv,iv,ia,ispin_bgrp( i ) )
-                 tmpbec(iv,i) = tmpbec(iv,i) + temp * bec_bgrp(inl,i)
+                 tmpbec(i,iv) = tmpbec(i,iv) + temp * bec_bgrp(jnl,i)
               end do
            end do
         end do
 
-        do iv=1,nh(is)
+        do iv = 1, nh(is)
            inl = indv_ijkb0(ia) + iv
            do i = 1, nbsp_bgrp
-              tmpdr(iv,i) = f_bgrp( i ) * becdr_bgrp( inl, i, k )
+              tmpdr(i,iv) = f_bgrp( i ) * becdr_bgrp( inl, i, k )
            end do
         end do
 
         sum_tmpdr = 0.0d0
-        do i = 1, nbsp_bgrp
-           do iv = 1, nh(is)
-              sum_tmpdr = sum_tmpdr + tmpdr(iv,i)*tmpbec(iv,i)
+        do iv = 1, nh(is)
+           do i = 1, nbsp_bgrp
+              sum_tmpdr = sum_tmpdr + tmpdr(i,iv)*tmpbec(i,iv)
            end do
         end do
 
@@ -911,7 +961,6 @@ subroutine nlfq_bgrp_x( c_bgrp, eigr, bec_bgrp, becdr_bgrp, fion )
   deallocate ( tmpbec, tmpdr )
 
 !$omp end parallel
-
   !
   CALL mp_sum( fion_loc, intra_bgrp_comm )
   IF( nbgrp > 1 ) THEN
