@@ -338,6 +338,7 @@ CONTAINS
       USE io_global,         ONLY: stdout
       USE control_flags,     ONLY: ortho_eps, ortho_max
       USE mp_bands,          ONLY: intra_bgrp_comm, me_bgrp, nproc_bgrp
+      USE mp_world,          ONLY: mpime
       USE mp,                ONLY: mp_sum, mp_max
 
       IMPLICIT NONE
@@ -955,9 +956,6 @@ CONTAINS
       REAL(DP)    :: bec_bgrp( :, : ), x0( :, :, : )
       REAL(DP)    :: bephi( :, : )
       REAL(DP)    :: becp_bgrp( :, : )
-#if defined (__CUDA)
-      ATTRIBUTES( DEVICE ) :: becp_bgrp, bephi
-#endif
 
       ! local variables
 
@@ -966,10 +964,20 @@ CONTAINS
       INTEGER :: ibgrp_i, ibgrp_i_first, nbgrp_i, i_first
       REAL(DP),    ALLOCATABLE :: xd(:,:)
       REAL(DP),    ALLOCATABLE :: bephi_tmp(:,:) 
+      INTEGER,     ALLOCATABLE :: indi(:)
       INTEGER :: np( 2 ), coor_ip( 2 ), leg_ortho
       INTEGER :: idesc_ip(LAX_DESC_SIZE)
+#if defined (__CUDA)
+      ATTRIBUTES( DEVICE ) :: xd, becp_bgrp, bephi, cp_bgrp, phi, bephi_tmp, bec_bgrp, indi
+#endif
 
       CALL start_clock( 'updatc' )
+
+#if defined (__CUDA)
+      IF( nkbus > 0 )THEN
+         ALLOCATE(indi, SOURCE=ibgrp_g2l)
+      END IF
+#endif
 
       CALL laxlib_getval( leg_ortho = leg_ortho )
 
@@ -1003,12 +1011,21 @@ CONTAINS
          ALLOCATE( xd( nrcx, nrcx ) )
    
          IF( nkbus > 0 )THEN
+#if defined (__CUDA)
+!$cuf kernel do(1) <<<*,*>>>
+            DO i = 1, nss
+               IF( indi( i + istart - 1 ) > 0 ) THEN
+                  bec_bgrp( :, indi( i + istart - 1 ) ) = becp_bgrp( :, indi( i + istart - 1 ) )
+               END IF
+            END DO
+#else
             DO i = 1, nss
                ibgrp_i = ibgrp_g2l( i + istart - 1 )
                IF( ibgrp_i > 0 ) THEN
                   bec_bgrp( :, ibgrp_i ) = becp_bgrp( :, ibgrp_i )
                END IF
             END DO
+#endif
             ALLOCATE( bephi_tmp( nkbx, nrcx ) )
          END IF
    
@@ -1079,8 +1096,9 @@ CONTAINS
                CALL mp_bcast( xd, root, intra_bgrp_comm )
    
                IF( ngw > 0 ) THEN
-                  CALL dgemm( 'N', 'N', 2*ngw, nbgrp_i, nr, 1.0d0, phi(1,istart+ir-1), 2*ngwx, &
-                           xd(1,i_first), nrcx, 1.0d0, cp_bgrp(1,ibgrp_i_first), 2*ngwx )
+                  CALL DGEMMDRV &
+                      ( 'N', 'N', 2*ngw, nbgrp_i, nr, 1.0d0, phi(1,istart+ir-1), 2*ngwx, &
+                        xd(1,i_first), nrcx, 1.0d0, cp_bgrp(1,ibgrp_i_first), 2*ngwx )
                END IF
    
                IF( nkbus > 0 )THEN
@@ -1096,8 +1114,9 @@ CONTAINS
                      END IF
                   END DO
                   IF( nbgrp_i > 0 ) THEN
-                     CALL dgemm( 'N', 'T', nkb, nbgrp_i, nc, 1.0d0, &
-                            bephi_tmp, nkbx, xd(i_first,1), nrcx, 1.0d0, bec_bgrp( 1, ibgrp_i_first ), SIZE(bec_bgrp,1) )
+                     CALL DGEMMDRV &
+                          ( 'N', 'T', nkb, nbgrp_i, nc, 1.0d0, bephi_tmp(1,1), nkbx, &
+                            xd(i_first,1), nrcx, 1.0d0, bec_bgrp( 1, ibgrp_i_first ), SIZE(bec_bgrp,1) )
                   END IF
                   !
                END IF
@@ -1113,6 +1132,8 @@ CONTAINS
          DEALLOCATE(xd)
          !
       END DO
+      !
+      IF(ALLOCATED(indi)) DEALLOCATE(indi)
       !
       CALL stop_clock( 'updatc' )
       !
@@ -1150,7 +1171,7 @@ CONTAINS
 
       ! local variables
       !
-      INTEGER  :: is, iv, jv, ia, inl, jnl, i, j
+      INTEGER  :: is, iv, jv, ia, inl, jnl, i, j, indv
       REAL(DP), ALLOCATABLE :: qtemp( : , : )
       REAL(DP) :: qqf
 !
@@ -1165,13 +1186,17 @@ CONTAINS
          ALLOCATE( qtemp( nkb, nbspx_bgrp ) )
 
          qtemp (:,:) = 0.d0
+!$omp parallel do default(none) &
+!$omp shared(nat,ityp,upf,nh,indv_ijkb0,qq_nt,qtemp,bec_bgrp,nbsp_bgrp) &
+!$omp private(ia,is,iv,inl,jv,jnl,qqf,i,indv)
          DO ia = 1, nat
             is = ityp(ia)
+            indv = indv_ijkb0(ia)
             IF( upf(is)%tvanp ) THEN
                DO iv=1,nh(is)
-                  inl = indv_ijkb0(ia) + iv 
+                  inl = indv + iv 
                   DO jv=1,nh(is)
-                     jnl = indv_ijkb0(ia) + jv
+                     jnl = indv + jv
                      IF(ABS(qq_nt(iv,jv,is)) > 1.d-5) THEN
                         qqf = qq_nt(iv,jv,is)
                         DO i=1,nbsp_bgrp
@@ -1182,6 +1207,7 @@ CONTAINS
                END DO
             END IF
          END DO
+!$omp end parallel do
 !
          IF( ngw > 0 ) THEN
             CALL dgemm ( 'N', 'N', 2*ngw, nbsp_bgrp, nkb, 1.0d0, betae, &
@@ -1286,22 +1312,3 @@ CONTAINS
    END SUBROUTINE bec_bgrp2ortho
 
 END MODULE orthogonalize_base
-
-
-! In principle this can go away .......
-SUBROUTINE MYDGER  ( M, N, ALPHA, X, INCX, Y, INCY, A, LDA )
-#if defined(__CUDA)
-    use cudafor
-    use cublas
-#endif
-!     .. Scalar Arguments ..
-    DOUBLE PRECISION ::  ALPHA
-    INTEGER          ::   INCX, INCY, LDA, M, N
-!     .. Array Arguments ..
-    DOUBLE PRECISION :: A( LDA, * ), X( * ), Y( * )
-#if defined(__CUDA)
-    attributes(device) :: A, X, Y
-#endif
-    CALL DGER  ( M, N, ALPHA, X, INCX, Y, INCY, A, LDA )
-
-END SUBROUTINE MYDGER
