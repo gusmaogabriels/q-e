@@ -50,7 +50,6 @@
    PUBLIC :: packgam
 
    PUBLIC :: ortho
-   PUBLIC :: ortho_gamma
 
    PUBLIC :: nlfh
    PUBLIC :: nlfl_bgrp
@@ -441,27 +440,6 @@
       END SUBROUTINE
    END INTERFACE
 
-   INTERFACE ortho_gamma
-      SUBROUTINE ortho_gamma_x &
-         ( cp, ngwx, phi, becp_dist, qbecp, nkbx, bephi, qbephi, &
-           nx0, idesc, diff, iter, n, nss, istart )
-         USE kinds,          ONLY: DP
-         IMPLICIT NONE
-         INTEGER,  INTENT(IN)  :: ngwx, nkbx, nx0
-         INTEGER,  INTENT(IN)  :: n, nss, istart
-         COMPLEX(DP) :: phi( :, : ), cp( :, : )
-         REAL(DP)    :: bephi( :, : )
-         REAL(DP)    :: becp_dist(:,:)
-         REAL(DP)    :: qbephi( :, : ), qbecp( :, : )
-         INTEGER,  INTENT(IN) :: idesc( : )
-         INTEGER,  INTENT(OUT) :: iter
-         REAL(DP), INTENT(OUT) :: diff
-#if defined (__CUDA)
-         ATTRIBUTES( DEVICE ) :: becp_dist, bephi, phi, cp
-#endif
-      END SUBROUTINE
-   END INTERFACE
-
    INTERFACE pseudo_stress
       SUBROUTINE pseudo_stress_x( deps, epseu, gagb, sfac, dvps, rhoeg, omega )
          USE kinds,              ONLY: DP
@@ -800,12 +778,12 @@
 
    INTERFACE move_electrons
       SUBROUTINE move_electrons_x( &
-         nfi, tfirst, tlast, b1, b2, b3, fion, enthal, enb, &
+         nfi, tprint, tfirst, tlast, b1, b2, b3, fion, enthal, enb, &
             &  enbi, fccc, ccc, dt2bye, stress,l_cprestart )
          USE kinds,         ONLY: DP
          IMPLICIT NONE
          INTEGER,  INTENT(IN)    :: nfi
-         LOGICAL,  INTENT(IN)    :: tfirst, tlast
+         LOGICAL,  INTENT(IN)    :: tprint, tfirst, tlast
          REAL(DP), INTENT(IN)    :: b1(3), b2(3), b3(3)
          REAL(DP)                :: fion(:,:)
          REAL(DP), INTENT(IN)    :: dt2bye
@@ -927,7 +905,7 @@
          IMPLICIT NONE
          INTEGER,     INTENT(IN) :: n
          COMPLEX(DP), DEVICE, INTENT(IN) :: c( :, : )
-         REAL(DP),    INTENT(IN) :: f( : )
+         REAL(DP),    DEVICE, INTENT(IN) :: f( : )
          REAL(DP) :: enkin_gpu_x
       END FUNCTION enkin_gpu_x
 #endif
@@ -991,6 +969,16 @@
          COMPLEX(DP), INTENT(IN)  :: eigr( :, : ), c_bgrp( :, : )
          REAL(DP),    INTENT(OUT) :: becdr_bgrp( :, :, : )
       END SUBROUTINE nlsm2_bgrp_x
+#if defined (_CUDA)
+      SUBROUTINE  nlsm2_bgrp_gpu_x( ngw, nkb, eigr, c_bgrp, becdr_bgrp, nbspx_bgrp, nbsp_bgrp )
+         USE kinds,      ONLY : DP
+         IMPLICIT NONE
+         INTEGER,     INTENT(IN)  :: ngw, nkb, nbspx_bgrp, nbsp_bgrp
+         COMPLEX(DP), INTENT(IN)  :: eigr( :, : )
+         COMPLEX(DP), INTENT(IN), DEVICE :: c_bgrp( :, : )
+         REAL(DP),    INTENT(OUT) :: becdr_bgrp( :, :, : )
+      END SUBROUTINE nlsm2_bgrp_gpu_x
+#endif
    END INTERFACE
 
    INTERFACE calbec_bgrp
@@ -1068,7 +1056,8 @@
       SUBROUTINE nlfq_bgrp_x( c_bgrp, eigr, bec_bgrp, becdr_bgrp, fion )
          USE kinds,              ONLY: DP
          IMPLICIT NONE
-         COMPLEX(DP), INTENT(IN)  ::  c_bgrp( :, : ), eigr( :, : )
+         COMPLEX(DP), INTENT(IN) DEVICEATTR :: c_bgrp( :, : )
+         COMPLEX(DP), INTENT(IN)  ::  eigr( :, : )
          REAL(DP),    INTENT(IN)  ::  bec_bgrp( :, : )
          REAL(DP),    INTENT(OUT) ::  becdr_bgrp( :, :, : )
          REAL(DP),    INTENT(OUT) ::  fion( :, : )

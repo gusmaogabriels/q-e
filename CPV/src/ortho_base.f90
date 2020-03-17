@@ -945,6 +945,9 @@ CONTAINS
       USE mp,                ONLY: mp_sum, mp_bcast
       USE mp_bands,          ONLY: intra_bgrp_comm, me_bgrp, inter_bgrp_comm
       USE electrons_base,    ONLY: nbspx_bgrp, ibgrp_g2l, nbsp, nspin,  nupdwn, iupdwn, nbspx
+      USE device_util_m,     ONLY: dev_memcpy
+!
+      USE device_util_m,     ONLY : dev_memcpy
 !
       IMPLICIT NONE
 
@@ -1046,7 +1049,8 @@ CONTAINS
                ! broadcast the block to all processors 
                ! 
                IF( me_bgrp == root ) THEN
-                  bephi_tmp(:,:) = bephi(:, i1 : i1+nrcx-1 )
+                  !bephi_tmp(:,:) = bephi(:, i1 : i1+nrcx-1 )
+                  CALL dev_memcpy(bephi_tmp, bephi(:, i1:), [1, nkbx], 1 , [1, nrcx])
                END IF
                CALL mp_bcast( bephi_tmp, root, intra_bgrp_comm )
                !
@@ -1090,7 +1094,14 @@ CONTAINS
                IF( idesc( LAX_DESC_MYR, iss ) == ipr - 1 .AND. &
                    idesc( LAX_DESC_MYC, iss ) == ipc - 1 .AND. &
                    idesc( LAX_DESC_ACTIVE_NODE, iss ) > 0 ) THEN
-                  xd = x0(:,:,iss) * ccc
+                   ! xd = x0(:,:,iss) * ccc
+                   CALL dev_memcpy( xd(:,:) , x0(:, :, iss ) )
+!$cuf kernel do(2) <<<*,*>>>
+                   DO j = 1, SIZE( xd, 2 )
+                      DO i = 1, SIZE( xd, 1 )
+                         xd(i,j) = ccc * xd(i,j)
+                      END DO
+                   END DO
                END IF
    
                CALL mp_bcast( xd, root, intra_bgrp_comm )
@@ -1143,7 +1154,7 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------
-      SUBROUTINE calphi_bgrp( c0_bgrp, ngwx, bec_bgrp, nkbx, betae, phi_bgrp, nbspx_bgrp, ema0bg )
+   SUBROUTINE calphi_bgrp( c0_bgrp, ngwx, bec_bgrp, nkbx, betae, phi_bgrp, nbspx_bgrp, ema0bg )
 !-----------------------------------------------------------------------
 !     input: c0 (orthonormal with s(r(t)), bec=<c0|beta>, betae=|beta>
 !     computes the matrix phi (with the old positions)
@@ -1161,19 +1172,29 @@ CONTAINS
       USE constants,      ONLY: pi, fpi
       USE control_flags,  ONLY: iverbosity
       USE mp,             ONLY: mp_sum
+#if defined (__CUDA)
+      USE cudafor
+#endif
 !
       IMPLICIT NONE
       
       INTEGER, INTENT(IN) :: ngwx, nkbx, nbspx_bgrp
-      COMPLEX(DP)         :: c0_bgrp( ngwx, nbspx_bgrp ), phi_bgrp( ngwx, nbspx_bgrp ), betae( ngwx, nkbx )
-      REAL(DP)            :: bec_bgrp( nkbx, nbspx_bgrp ), emtot
-      REAL(DP), OPTIONAL  :: ema0bg( ngwx )
+      COMPLEX(DP)         :: c0_bgrp( :, : ), phi_bgrp( :, : )
+      COMPLEX(DP)         :: betae( :, : )
+      REAL(DP)            :: bec_bgrp( :, : ), emtot
+      REAL(DP), OPTIONAL  :: ema0bg( : )
 
       ! local variables
       !
       INTEGER  :: is, iv, jv, ia, inl, jnl, i, j, indv
       REAL(DP), ALLOCATABLE :: qtemp( : , : )
+      REAL(DP), ALLOCATABLE :: qtemp_d( : , : )
+      REAL(DP), ALLOCATABLE :: ema0bg_d( : )
+      COMPLEX(DP), ALLOCATABLE :: betae_d( : , : )
       REAL(DP) :: qqf
+#if defined (__CUDA)
+      ATTRIBUTES( DEVICE ) :: c0_bgrp, phi_bgrp, ema0bg_d, qtemp_d, betae_d
+#endif
 !
       IF( nbsp_bgrp < 1 ) RETURN
       !
@@ -1210,8 +1231,17 @@ CONTAINS
 !$omp end parallel do
 !
          IF( ngw > 0 ) THEN
+#if defined (__CUDA)
+            ALLOCATE(betae_d, SOURCE=betae)
+            ALLOCATE(qtemp_d, SOURCE=qtemp)
+            CALL MYDGEMM ( 'N', 'N', 2*ngw, nbsp_bgrp, nkb, 1.0d0, betae_d, &
+                       2*ngwx, qtemp_d, nkb, 0.0d0, phi_bgrp, 2*ngwx )
+            DEALLOCATE(qtemp_d)
+            DEALLOCATE(betae_d)
+#else
             CALL dgemm ( 'N', 'N', 2*ngw, nbsp_bgrp, nkb, 1.0d0, betae, &
                        2*ngwx, qtemp, nkb, 0.0d0, phi_bgrp, 2*ngwx )
+#endif
          ELSE
             phi_bgrp = 0.0d0
          END IF
@@ -1225,6 +1255,16 @@ CONTAINS
       END IF
 !
       IF( PRESENT( ema0bg ) ) THEN
+#if defined (__CUDA)
+         ALLOCATE(ema0bg_d, SOURCE=ema0bg )
+!$cuf kernel do(2) <<<*,*>>>
+         DO j=1,nbsp_bgrp
+            DO i=1,ngw
+               phi_bgrp(i,j)=(phi_bgrp(i,j)+c0_bgrp(i,j))*ema0bg_d(i)
+            END DO
+         END DO
+         DEALLOCATE(ema0bg_d)
+#else
 !$omp parallel do default(shared), private(i)
          DO j=1,nbsp_bgrp
             DO i=1,ngw
@@ -1232,7 +1272,16 @@ CONTAINS
             END DO
          END DO
 !$omp end parallel do
+#endif
       ELSE
+#if defined (__CUDA)
+!$cuf kernel do(2) <<<*,*>>>
+         DO j=1,nbsp_bgrp
+            DO i=1,ngw
+               phi_bgrp(i,j)=phi_bgrp(i,j)+c0_bgrp(i,j)
+            END DO
+         END DO
+#else
 !$omp parallel do default(shared), private(i)
          DO j=1,nbsp_bgrp
             DO i=1,ngw
@@ -1240,12 +1289,13 @@ CONTAINS
             END DO
          END DO
 !$omp end parallel do
+#endif
       END IF
       !   
       CALL stop_clock( 'calphi' )
 !
       RETURN
-      END SUBROUTINE calphi_bgrp
+   END SUBROUTINE calphi_bgrp
 
 
    SUBROUTINE bec_bgrp2ortho( bec_bgrp, bec_ortho, nrcx, idesc )
@@ -1254,6 +1304,8 @@ CONTAINS
       USE mp,                ONLY: mp_sum
       USE mp_bands,          ONLY: intra_bgrp_comm, me_bgrp, inter_bgrp_comm, nbgrp
       USE electrons_base,    ONLY: nbspx_bgrp, ibgrp_g2l, nspin
+      !
+      USE device_util_m,     ONLY : dev_memcpy
       !
       IMPLICIT NONE
       !
@@ -1277,12 +1329,14 @@ CONTAINS
          ir = idesc(LAX_DESC_IR, 1)
          nr = idesc(LAX_DESC_NR, 1)
          IF( nbgrp == 1 ) THEN
-            bec_ortho(:,1:nr) = bec_bgrp(:,ir:ir+nr-1)
+            !bec_ortho(:,1:nr) = bec_bgrp(:,ir:ir+nr-1)
+            CALL dev_memcpy(bec_ortho, bec_bgrp(:, ir:), [1, ubound(bec_bgrp)], 1 , [1, nr])
          ELSE
             DO i = 1, nr
                ibgrp_i = ibgrp_g2l( i + ir - 1 )
                IF( ibgrp_i > 0 ) THEN
-                  bec_ortho( :, i ) = bec_bgrp( :, ibgrp_i )
+                  !bec_ortho( :, i ) = bec_bgrp( :, ibgrp_i )
+                  CALL dev_memcpy(bec_ortho(:, i), bec_bgrp(:, ibgrp_i), [1, ubound(bec_ortho)])
                END IF
             END DO
          END IF
@@ -1294,12 +1348,14 @@ CONTAINS
             ir = idesc(LAX_DESC_IR, 2 )
             nr = idesc(LAX_DESC_NR, 2 )
             IF( nbgrp == 1 ) THEN
-               bec_ortho( :, nrcx+1 : nrcx+nr ) = bec_bgrp( :, nup+ir:nup+ir+nr-1 )
+               !bec_ortho( :, nrcx+1 : nrcx+nr ) = bec_bgrp( :, nup+ir:nup+ir+nr-1 )
+               CALL dev_memcpy(bec_ortho( :, nrcx+1:), bec_bgrp(:, nup+ir:), [1, ubound(bec_ortho)], 1 , [1, nr])
             ELSE
                do i = 1, nr
                   ibgrp_i = ibgrp_g2l( i + ir - 1 + nup )
                   IF( ibgrp_i > 0 ) THEN
-                     bec_ortho( :, i + nrcx ) = bec_bgrp( :, ibgrp_i )
+                     !bec_ortho( :, i + nrcx ) = bec_bgrp( :, ibgrp_i )
+                     CALL dev_memcpy(bec_ortho(:, i+nrcx ), bec_bgrp(:, ibgrp_i), [1, ubound(bec_ortho)])
                   END IF
                end do
             END IF

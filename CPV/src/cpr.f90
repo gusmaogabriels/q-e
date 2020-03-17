@@ -80,7 +80,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
                                        electrons_nosevel, electrons_noseupd
   USE pres_ai_mod,              ONLY : P_ext, P_in, P_fin, pvar, volclu, &
                                        surfclu, Surf_t, abivol, abisur
-  USE wavefunctions,            ONLY : c0_bgrp, cm_bgrp, phi_bgrp, cm_d, phi_d, c0_d
+  USE wavefunctions,            ONLY : c0_bgrp, cm_bgrp, cm_d, phi, c0_d
   USE wannier_module,           ONLY : allocate_wannier
   USE cp_interfaces,            ONLY : printout_new, move_electrons, newinit
   USE cell_nose,                ONLY : xnhh0, xnhhm, xnhhp, vnhh, temph, &
@@ -118,7 +118,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
   USE input_parameters,         ONLY : tcpbo
   USE funct,                    ONLY : dft_is_hybrid, start_exx, exx_is_active
   USE funct,                    ONLY : dft_is_meta
-  USE device_helper
+  USE device_util_m,            ONLY : dev_memcpy
   !
   IMPLICIT NONE
   !
@@ -293,11 +293,12 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
      IF( force_pairing ) THEN
           c0_bgrp(:,iupdwn(2):nbsp)       =     c0_bgrp(:,1:nupdwn(2))
           cm_bgrp(:,iupdwn(2):nbsp)       =     cm_bgrp(:,1:nupdwn(2))
-         phi_bgrp(:,iupdwn(2):nbsp)       =    phi_bgrp(:,1:nupdwn(2))
+         !phi(:,iupdwn(2):nbsp)       =    phi(:,1:nupdwn(2))
+          CALL dev_memcpy(phi(:,iupdwn(2):), phi, [1, ubound(phi)], 1, [1, nbsp])
       lambda(:,:, 2) = lambda(:,:, 1)
      ENDIF
      !
-     CALL sync_to_host( c0_bgrp, c0_d )
+     CALL dev_memcpy( c0_d, c0_bgrp )
      !
      ! Autopilot (Dynamic Rules) Implimentation    
      !
@@ -335,7 +336,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
         !
      END IF
      !
-     CALL move_electrons( nfi, tfirst, tlast, bg(:,1), bg(:,2), bg(:,3), &
+     CALL move_electrons( nfi, tprint, tfirst, tlast, bg(:,1), bg(:,2), bg(:,3), &
                           fion, enthal, enb, enbi, fccc, ccc, dt2bye, stress, .false. )
      !
      IF (lda_plus_u) fion = fion + forceh
@@ -549,11 +550,9 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
          IF ( tortho ) THEN
            !
 #if defined (__CUDA)
-           CALL sync_to_host( cm_bgrp, cm_d )
-           CALL sync_to_host( phi_bgrp, phi_d )
-           CALL ortho( eigr, cm_d, phi_d, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
+           CALL ortho( eigr, cm_d, phi, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
 #else
-           CALL ortho( eigr, cm_bgrp, phi_bgrp, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
+           CALL ortho( eigr, cm_bgrp, phi, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
 #endif
            !
          ELSE
@@ -570,18 +569,19 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
          !
          IF ( tortho ) THEN
 #if defined (__CUDA)
-           CALL updatc( ccc, lambda, phi_d, bephi, becp_bgrp, bec_d, cm_d, idesc )
-           CALL sync_to_device( bec_bgrp, bec_d )
-           CALL sync_to_device( cm_bgrp, cm_d )
+            CALL updatc( ccc, lambda, phi, bephi, becp_bgrp, bec_d, cm_d, idesc )
+            CALL dev_memcpy( bec_bgrp, bec_d )
+            CALL dev_memcpy( cm_bgrp, cm_d )
 #else
-           CALL updatc( ccc, lambda, phi_bgrp, bephi, becp_bgrp, bec_bgrp, cm_bgrp, idesc )
+            CALL updatc( ccc, lambda, phi, bephi, becp_bgrp, bec_bgrp, cm_bgrp, idesc )
 #endif
          END IF
          !
          IF( force_pairing ) THEN
-           c0_bgrp(:,iupdwn(2):nbsp)       =     c0_bgrp(:,1:nupdwn(2))
-           cm_bgrp(:,iupdwn(2):nbsp)       =     cm_bgrp(:,1:nupdwn(2))
-           phi_bgrp(:,iupdwn(2):nbsp)       =    phi_bgrp(:,1:nupdwn(2))
+           c0_bgrp(:,iupdwn(2):nbsp)   =     c0_bgrp(:,1:nupdwn(2))
+           cm_bgrp(:,iupdwn(2):nbsp)   =     cm_bgrp(:,1:nupdwn(2))
+           !phi(:,iupdwn(2):nbsp)       =    phi(:,1:nupdwn(2))
+           CALL dev_memcpy(phi(:,iupdwn(2):), phi, [1, ubound(phi)], 1, [1, nbsp])
            lambda(:,:, 2) = lambda(:,:, 1)
          ENDIF
          !
@@ -824,7 +824,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
            !
            lambdam = lambda
            !
-           CALL move_electrons( nfi, tfirst, tlast, bg(:,1), bg(:,2), bg(:,3),&
+           CALL move_electrons( nfi, tprint, tfirst, tlast, bg(:,1), bg(:,2), bg(:,3),&
                                 fion, enthal, enb, enbi, fccc, ccc, dt2bye, stress,.true. )
            !
         END IF

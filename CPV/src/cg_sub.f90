@@ -180,7 +180,11 @@
 
       !calculates phi for pcdaga
 
+#if defined (__CUDA)
+      CALL errore('  runcg_uspp ', ' GPU version not yet implemented', 1 )
+#else
       CALL calphi_bgrp( c0, SIZE(c0,1), bec, nkb, betae, phi, nbsp )
+#endif
 
       !calculates the factors for S and K inversion in US case
       if(nkbus>0) then
@@ -301,7 +305,7 @@
 
         !update d
 
-        call newd(vpot,irb,eigrb,rhovan,fion)
+        call newd(vpot,irb,eigrb,rhovan,fion,.true.)
 
 
         call prefor(eigr,betae)!ATTENZIONE
@@ -778,8 +782,12 @@
  
         if(.not. ene_ok) call calbec (1,nsp,eigr,c0,bec)
 
+#if defined (__CUDA)
+        CALL errore('  runcg_uspp ', ' GPU version not yet implemented', 1 )
+#else
         !calculates phi for pc_daga
         CALL calphi_bgrp( c0, SIZE(c0,1), bec, nkb, betae, phi, nbsp )
+#endif
   
         !=======================================================================
         !
@@ -844,12 +852,16 @@
 
      call calcmt( nrlx, f, z0t, fmat0 )
 
-      call newd(vpot,irb,eigrb,rhovan,fion)
+      call newd(vpot,irb,eigrb,rhovan,fion,.true.)
+#if defined (__CUDA)
+      CALL errore('  runcg_uspp ', ' GPU version not yet implemented', 1 )
+#else
       if (.not.tens) then
-        if (tfor .or. tprnfor) call nlfq_bgrp( c0, eigr, bec, becdr, fion ) ! call nlfq(c0,eigr,bec,becdr,fion)
+        if (tfor .or. tprnfor) call nlfq_bgrp( c0, eigr, bec, becdr, fion ) 
       else
-        if (tfor .or. tprnfor) call nlfq_bgrp( c0diag, eigr, becdiag, becdrdiag, fion ) ! call nlfq(c0diag,eigr,becdiag,becdrdiag,fion)
+        if (tfor .or. tprnfor) call nlfq_bgrp( c0diag, eigr, becdiag, becdrdiag, fion ) 
       endif
+#endif
   
         call prefor(eigr,betae)
         do i=1,nbsp,2
