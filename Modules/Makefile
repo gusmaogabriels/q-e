@@ -96,6 +96,7 @@ emend_upf.o \
 upf.o \
 upf_to_internal.o \
 uspp.o \
+uspp_gpu.o \
 version.o \
 wannier_gw.o\
 wannier_new.o \
