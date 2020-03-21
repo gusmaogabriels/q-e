@@ -134,7 +134,9 @@
          !  case nspin=1: two ffts at the same time, on two atoms (if possible)
          !     
          iss=1
+#if defined(_OPENMP)
          itid  = 0
+#endif
          nfft=1
 
          DO ia = 1, nat
@@ -185,7 +187,9 @@
          !     
          isup=1
          isdw=2
+#if defined(_OPENMP)
          itid  = 0
+#endif
 
          DO ia = 1, nat
 
