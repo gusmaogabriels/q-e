@@ -42,6 +42,8 @@ MODULE cp_main_variables
   REAL(DP), ALLOCATABLE :: taub(:,:)
   COMPLEX(DP), ALLOCATABLE :: eigrb(:,:)
   INTEGER,     ALLOCATABLE :: irb(:,:)
+  INTEGER,     ALLOCATABLE :: iabox(:)
+  INTEGER :: nabox
   ! 
   ! ... nonlocal projectors:
   ! ...    bec   = scalar product of projectors and wave functions
@@ -152,6 +154,10 @@ MODULE cp_main_variables
       ALLOCATE( irb( 3, nat ), STAT=ierr )
       IF( ierr /= 0 ) &
          CALL errore( ' allocate_mainvar ', ' unable to allocate irb ', ierr )
+      ALLOCATE( iabox( nat ), STAT=ierr )
+      IF( ierr /= 0 ) &
+         CALL errore( ' allocate_mainvar ', ' unable to allocate iabox ', ierr )
+      nabox = 0
       !
       IF ( dft_is_meta() ) THEN
          !
@@ -290,6 +296,7 @@ MODULE cp_main_variables
       IF( ALLOCATED( sfac ) )    DEALLOCATE( sfac )
       IF( ALLOCATED( eigrb ) )   DEALLOCATE( eigrb )
       IF( ALLOCATED( irb ) )     DEALLOCATE( irb )
+      IF( ALLOCATED( iabox ) )     DEALLOCATE( iabox )
       IF( ALLOCATED( rhor ) )    DEALLOCATE( rhor )
       IF( ALLOCATED( rhos ) )    DEALLOCATE( rhos )
       IF( ALLOCATED( rhog ) )    DEALLOCATE( rhog )

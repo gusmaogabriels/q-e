@@ -203,9 +203,11 @@ CONTAINS
       USE kinds,              ONLY: DP
       USE orthogonalize_base, ONLY: rhoset, sigset, tauset, ortho_iterate,   &
                                     use_parallel_diag
+      USE control_flags,      ONLY: diagonalize_on_host
       USE mp_global,          ONLY: nproc_bgrp, me_bgrp, intra_bgrp_comm, my_bgrp_id, inter_bgrp_comm, nbgrp
       USE mp,                 ONLY: mp_sum, mp_bcast
       USE mp_world,           ONLY: mpime
+      USE device_util_m
 
       IMPLICIT  NONE
 
@@ -227,6 +229,7 @@ CONTAINS
 
       INTEGER  :: i, j, info, nr, nc, ir, ic
       INTEGER, SAVE :: icnt = 1
+      REAL(DP), ALLOCATABLE :: rhos_h(:,:), s_h(:,:), rhod_h(:)
       !
       ! ...   Subroutine body
       !
@@ -285,12 +288,22 @@ CONTAINS
          IF( idesc(LAX_DESC_NR) == idesc(LAX_DESC_NC) .AND. idesc(LAX_DESC_NR) == idesc(LAX_DESC_N) ) THEN
             CALL laxlib_diagonalize( nss, rhos, rhod, s, info )
          ELSE IF( idesc(LAX_DESC_ACTIVE_NODE) > 0 ) THEN
-            CALL collect_matrix( wrk, rhos, ir, nr, ic, nc, idesc(LAX_DESC_COMM) )
-            IF( idesc(LAX_DESC_IC) == 1 .AND. idesc(LAX_DESC_IR) == 1 ) THEN
-               CALL laxlib_diagonalize( nss, wrk, rhod, stmp, info )
-            END IF 
-            CALL distribute_matrix( stmp, s, ir, nr, ic, nc, idesc(LAX_DESC_COMM) )
-            CALL mp_bcast( rhod, 0, idesc(LAX_DESC_COMM) )
+            IF( diagonalize_on_host ) THEN  !  tune here
+               ALLOCATE( rhos_h, SOURCE = rhos )
+               ALLOCATE( rhod_h, MOLD = rhod )
+               ALLOCATE( s_h, MOLD = s )
+               CALL laxlib_diagonalize( nss, rhos_h, rhod_h, s_h, idesc )
+               CALL dev_memcpy( s, s_h )
+               CALL dev_memcpy( rhod, rhod_h )
+               DEALLOCATE( rhos_h, rhod_h, s_h )
+            ELSE
+               CALL collect_matrix( wrk, rhos, ir, nr, ic, nc, idesc(LAX_DESC_COMM) )
+               IF( idesc(LAX_DESC_IC) == 1 .AND. idesc(LAX_DESC_IR) == 1 ) THEN
+                  CALL laxlib_diagonalize( nss, wrk, rhod, stmp, info )
+               END IF 
+               CALL distribute_matrix( stmp, s, ir, nr, ic, nc, idesc(LAX_DESC_COMM) )
+               CALL mp_bcast( rhod, 0, idesc(LAX_DESC_COMM) )
+            END IF
          END IF
 #else
          CALL laxlib_diagonalize( nss, rhos, rhod, s, idesc )
@@ -449,11 +462,34 @@ CONTAINS
       END IF
    END SUBROUTINE compute_qs_times_betas
 
+   SUBROUTINE keep_only_us(wrk)
+      USE uspp,           ONLY: indv_ijkb0
+      USE uspp_param,     ONLY: nh, upf
+      USE ions_base,      ONLY: na, nat, nsp, ityp
+#if defined (__CUDA)
+      USE cublas
+#endif
+      IMPLICIT NONE
+      COMPLEX(DP) DEVICEATTR, INTENT(OUT) :: wrk(:,:)
+      INTEGER :: ia, is, inl, nhs, iv
+      DO ia = 1, nat
+         is  = ityp(ia)
+         inl = indv_ijkb0(ia)
+         nhs = nh(is)
+         IF( .NOT. upf(is)%tvanp ) THEN
+!$cuf kernel do (1)
+            DO iv = 1, nhs
+               wrk(:,iv+inl) = 0.0d0
+            END DO
+         END IF
+      END DO
+   END SUBROUTINE
+
 END MODULE ortho_module
 
 
 !=----------------------------------------------------------------------------=!
-   SUBROUTINE ortho_x( eigr, cp_bgrp, phi_bgrp, x0, idesc, diff, iter, ccc, bephi, becp_bgrp )
+   SUBROUTINE ortho_x( betae, cp_bgrp, phi_bgrp, x0, idesc, diff, iter, ccc, bephi, becp_bgrp )
 !=----------------------------------------------------------------------------=!
       !
       !     input = cp (non-orthonormal), beta
@@ -475,19 +511,20 @@ END MODULE ortho_module
       USE control_flags,  ONLY: iprint, iverbosity, ortho_max
       USE control_flags,  ONLY: force_pairing
       USE io_global,      ONLY: stdout, ionode
-      USE cp_interfaces,  ONLY: c_bgrp_expand, c_bgrp_pack, nlsm1, collect_bec, beta_eigr, nlsm1us
+      USE cp_interfaces,  ONLY: c_bgrp_expand, c_bgrp_pack, nlsm1, collect_bec, nlsm1us
       USE mp_global,          ONLY: nproc_bgrp, me_bgrp, intra_bgrp_comm, inter_bgrp_comm! DEBUG
       USE mp_world,           ONLY: mpime
       USE orthogonalize_base, ONLY: bec_bgrp2ortho
       USE mp,                 ONLY : mp_sum
       USE ortho_module
+      USE device_util_m
       !
       IMPLICIT NONE
       !
       include 'laxlib.fh'
       !
       INTEGER, INTENT(IN) :: idesc(:,:)
-      COMPLEX(DP) :: eigr(:,:)
+      COMPLEX(DP) DEVICEATTR :: betae(:,:)
       COMPLEX(DP) DEVICEATTR :: cp_bgrp(:,:), phi_bgrp(:,:)
       REAL(DP)    :: x0(:,:,:), diff, ccc
       INTEGER     :: iter
@@ -496,7 +533,7 @@ END MODULE ortho_module
       !
       REAL(DP),    ALLOCATABLE DEVICEATTR :: bec_row(:,:)
       REAL(DP),    ALLOCATABLE DEVICEATTR :: qbephi(:,:,:), qbecp(:,:,:)
-      COMPLEX(DP), ALLOCATABLE DEVICEATTR :: beigr(:,:)
+      COMPLEX(DP), ALLOCATABLE DEVICEATTR :: wrk2(:,:)
 
       INTEGER :: nkbx, info, iss, nspin_sub, nx0, ngwx, nrcx
       !
@@ -515,17 +552,15 @@ END MODULE ortho_module
 
       IF( nkbus > 0 ) THEN
          !
-         ALLOCATE( beigr(ngw,nkb), STAT=info )
-         IF( info /= 0 ) &
-            CALL errore( ' ortho ', ' allocating beigr ', ABS( info ) )
-         !
-         CALL beta_eigr ( beigr, 1, nsp, eigr, 2 )
-         CALL nlsm1us ( nbsp_bgrp, beigr, phi_bgrp, becp_bgrp )
+         ALLOCATE( wrk2, MOLD = betae  )
+         CALL dev_memcpy( wrk2, betae )
+         CALL keep_only_us( wrk2 ) 
+         CALL nlsm1us ( nbsp_bgrp, wrk2, phi_bgrp, becp_bgrp )
          CALL bec_bgrp2ortho( becp_bgrp, bephi, nrcx, idesc )
          !
-         CALL nlsm1us ( nbsp_bgrp, beigr, cp_bgrp, becp_bgrp )
+         CALL nlsm1us ( nbsp_bgrp, wrk2, cp_bgrp, becp_bgrp )
          CALL bec_bgrp2ortho( becp_bgrp, bec_row, nrcx, idesc )
-         DEALLOCATE( beigr )
+         DEALLOCATE( wrk2 )
          !
       END IF
       !
@@ -569,7 +604,9 @@ END MODULE ortho_module
          !
       END DO
 
-      IF( force_pairing ) cp_bgrp(:, iupdwn(2):iupdwn(2)+nupdwn(2)-1 ) = cp_bgrp(:,1:nupdwn(2))
+      IF( force_pairing ) THEN
+         CALL dev_memcpy(cp_bgrp(:,iupdwn(2):), cp_bgrp(:,1:),  [1, ngw], 1 , [1, nupdwn(2)], 1) 
+      END IF
       !
       DEALLOCATE( qbecp )
       DEALLOCATE( qbephi )

@@ -24,6 +24,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
   USE core,                     ONLY : rhoc
   USE uspp_param,               ONLY : nhm, nh, ish
   USE uspp,                     ONLY : nkb, vkb, becsum, deeq, okvan, nlcc_any
+  USE uspp_gpum,                ONLY : vkb_d
   USE energies,                 ONLY : eht, epseu, exc, etot, eself, enl, &
                                        ekin, atot, entropy, egrand, enthal, &
                                        ekincm, print_energies
@@ -96,14 +97,14 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
                                        ema0bg, sfac, eigr, iprint_stdout,  &
                                        irb, taub, eigrb, rhog, rhos, &
                                        rhor, bephi, becp_bgrp, nfi, idesc, &
-                                       drhor, drhog, bec_bgrp, dbec, bec_d
+                                       drhor, drhog, bec_bgrp, dbec, bec_d, iabox, nabox
   USE autopilot,                ONLY : event_step, event_index, &
                                        max_event_step, restart_p
   USE cell_base,                ONLY : s_to_r, r_to_s
   USE wannier_subroutines,      ONLY : wannier_startup, wf_closing_options, &
                                        ef_enthalpy
   USE cp_interfaces,            ONLY : writefile, eigs, strucf, phfacs
-  USE cp_interfaces,            ONLY : ortho, elec_fakekine, calbec_bgrp, calbec_nc, calbec, caldbec_bgrp
+  USE cp_interfaces,            ONLY : ortho, elec_fakekine, calbec, caldbec_bgrp
   USE constraints_module,       ONLY : check_constraint, remove_constr_force
   USE cp_autopilot,             ONLY : pilot
   USE ions_nose,                ONLY : ions_nose_allocate, ions_nose_shiftvar
@@ -268,7 +269,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
      ! 
      IF ( (okvan .or. nlcc_any ) .AND. (tfor .OR. thdyn .OR. tfirst) ) THEN
         !
-        CALL initbox( tau0, alat, at, ainv, taub, irb )
+        CALL initbox( tau0, alat, at, ainv, taub, irb, iabox, nabox )
         !
         CALL phbox( taub, iverbosity, eigrb )
         !
@@ -533,6 +534,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
         ! ... prefor calculates vkb
         !
         CALL prefor( eigr, vkb )
+        CALL dev_memcpy( vkb_d, vkb )
         !
      END IF
      !
@@ -550,16 +552,16 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
          IF ( tortho ) THEN
            !
 #if defined (__CUDA)
-           CALL ortho( eigr, cm_d, phi, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
+           CALL ortho( vkb_d, cm_d, phi, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
 #else
-           CALL ortho( eigr, cm_bgrp, phi, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
+           CALL ortho( vkb, cm_bgrp, phi, lambda, idesc, bigr, iter, ccc, bephi, becp_bgrp )
 #endif
            !
          ELSE
            !
            CALL gram_bgrp( vkb, bec_bgrp, nkb, cm_bgrp, ngw )
            !
-           IF ( iverbosity > 2 ) CALL dotcsc( eigr, cm_bgrp, ngw, nbsp_bgrp )
+           IF ( iverbosity > 2 ) CALL dotcsc( vkb, cm_bgrp, ngw, nbsp_bgrp )
            !
          END IF
          !
@@ -586,13 +588,13 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
          ENDIF
          !
          ! the following compute only on NC pseudo components
-         CALL calbec_nc( eigr, cm_bgrp, bec_bgrp ) 
+         CALL calbec( nbsp_bgrp, vkb, cm_bgrp, bec_bgrp, 1 ) 
          !
          IF ( tpre ) THEN
            CALL caldbec_bgrp( eigr, cm_bgrp, dbec, idesc )
          END IF
          !
-         IF ( iverbosity > 1 ) CALL dotcsc( eigr, cm_bgrp, ngw, nbsp_bgrp )
+         IF ( iverbosity > 1 ) CALL dotcsc( vkb, cm_bgrp, ngw, nbsp_bgrp )
          !
        END IF
        !
@@ -809,7 +811,7 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
            ! ... restart with CP
            !
            IF ( okvan .or. nlcc_any ) THEN
-              CALL initbox( tau0, alat, at, ainv, taub, irb )
+              CALL initbox( tau0, alat, at, ainv, taub, irb, iabox, nabox )
               CALL phbox( taub, iverbosity, eigrb ) 
            END IF
            CALL r_to_s( tau0, taus, nat, ainv )
@@ -1101,8 +1103,6 @@ SUBROUTINE terminate_run()
   CALL print_clock( 'nlfq' )
   CALL print_clock( 'nlsm1' )
   CALL print_clock( 'nlsm2' )
-  CALL print_clock( 'beta_eigr' )
-  CALL print_clock( 'g_beta_eigr' )
   CALL print_clock( 'nlsm1us' )
   CALL print_clock( 'fft' )
   CALL print_clock( 'ffts' )
@@ -1124,6 +1124,7 @@ SUBROUTINE terminate_run()
   CALL print_clock( 'new_ns' )
   CALL print_clock( 'strucf' )
   CALL print_clock( 'calbec' )
+  CALL print_clock( 'exch_corr' )
 !==============================================================
   IF (ts_vdw) THEN
     WRITE( stdout, '(/5x,"Called by tsvdw:")' )

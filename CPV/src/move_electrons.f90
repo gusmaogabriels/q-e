@@ -17,10 +17,11 @@ SUBROUTINE move_electrons_x( nfi, tprint, tfirst, tlast, b1, b2, b3, fion, &
   USE control_flags,        ONLY : lwf, tfor, tprnfor, thdyn
   USE cg_module,            ONLY : tcg
   USE cp_main_variables,    ONLY : eigr, irb, eigrb, rhog, rhos, rhor, drhor, &
-                                   drhog, sfac, ema0bg, bec_bgrp, becdr_bgrp, &
+                                   drhog, sfac, ema0bg, bec_bgrp, becdr_bgrp,  &
                                    taub, lambda, lambdam, lambdap, vpot, dbec, idesc
   USE cell_base,            ONLY : omega, ibrav, h, press
   USE uspp,                 ONLY : becsum, vkb, nkb, nlcc_any
+  USE uspp_gpum,            ONLY : vkb_d
   USE energies,             ONLY : ekin, enl, entropy, etot
   USE electrons_base,       ONLY : nbsp, nspin, f, nudx, nupdwn, nbspx_bgrp, nbsp_bgrp
   USE core,                 ONLY : rhoc
@@ -109,7 +110,7 @@ SUBROUTINE move_electrons_x( nfi, tprint, tfirst, tlast, b1, b2, b3, fion, &
 !=================================================================
      ! ... put core charge (if present) in rhoc(r)
      !
-     IF ( nlcc_any ) CALL set_cc( irb, eigrb, rhoc )
+     IF ( nlcc_any ) CALL set_cc( rhoc )
      !
      IF ( lwf ) THEN
         !
@@ -158,9 +159,10 @@ SUBROUTINE move_electrons_x( nfi, tprint, tfirst, tlast, b1, b2, b3, fion, &
      !
      !=======================================================================
      !
-     CALL newd( vpot, irb, eigrb, becsum, fion, tprint )
+     CALL newd( vpot, becsum, fion, tprint )
      !
      CALL prefor( eigr, vkb )
+     CALL dev_memcpy( vkb_d, vkb )
      !
      IF( force_pairing ) THEN
         !
@@ -183,9 +185,9 @@ SUBROUTINE move_electrons_x( nfi, tprint, tfirst, tlast, b1, b2, b3, fion, &
      !
      IF ( tfor .OR. ( tprnfor .AND. tprint ) ) THEN
 #if defined (__CUDA)
-        CALL nlfq_bgrp( c0_d, eigr, bec_bgrp, becdr_bgrp, fion )
+        CALL nlfq_bgrp( c0_d, vkb_d, bec_bgrp, becdr_bgrp, fion )
 #else
-        CALL nlfq_bgrp( c0_bgrp, eigr, bec_bgrp, becdr_bgrp, fion )
+        CALL nlfq_bgrp( c0_bgrp, vkb, bec_bgrp, becdr_bgrp, fion )
 #endif
      END IF
      !
@@ -210,7 +212,7 @@ SUBROUTINE move_electrons_x( nfi, tprint, tfirst, tlast, b1, b2, b3, fion, &
      ! ... the electron mass rises with g**2
      !
 #if defined (__CUDA)
-     CALL calphi_bgrp( c0_d, ngw, bec_bgrp, nkb, vkb, phi, nbspx_bgrp, ema0bg )
+     CALL calphi_bgrp( c0_d, ngw, bec_bgrp, nkb, vkb_d, phi, nbspx_bgrp, ema0bg )
 #else
      CALL calphi_bgrp( c0_bgrp, ngw, bec_bgrp, nkb, vkb, phi, nbspx_bgrp, ema0bg )
 #endif
