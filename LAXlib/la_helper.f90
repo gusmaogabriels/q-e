@@ -659,8 +659,8 @@ END SUBROUTINE laxlib_multi_init_desc_x
       RETURN
    END SUBROUTINE diagonalize_serial_x
 
-#if (!defined(__USE_CUSOLVER)) && defined(__CUDA)
    SUBROUTINE diagonalize_serial_gpu( m, rhos, rhod, s, info )
+#if defined(__CUDA)
       use cudafor
 #if defined ( __USE_CUSOLVER )
       USE cusolverDn
@@ -772,6 +772,8 @@ END SUBROUTINE laxlib_multi_init_desc_x
       DEALLOCATE(a)
       DEALLOCATE(work_d)
 #endif
-
-   END SUBROUTINE
+#else
+      CALL lax_error__( ' laxlib diagonalize_serial_gpu ', ' not compiled in this version ', 0 )
 #endif
+   END SUBROUTINE
+
