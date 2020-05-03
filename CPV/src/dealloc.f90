@@ -15,7 +15,9 @@ SUBROUTINE deallocate_modules_var()
   !
   USE core,                 ONLY : deallocate_core
   USE uspp,                 ONLY : deallocate_uspp
+#if defined (__CUDA)
   USE uspp_gpum,            ONLY : deallocate_uspp_gpu
+#endif
   USE electrons_base,       ONLY : deallocate_elct
   USE efield_module,        ONLY : deallocate_efield
   USE ensemble_dft,         ONLY : deallocate_ensemble_dft
@@ -63,7 +65,9 @@ SUBROUTINE deallocate_modules_var()
   CALL deallocate_cg( )
   CALL deallocate_core()
   CALL deallocate_uspp()
+#if defined (__CUDA)
   CALL deallocate_uspp_gpu()
+#endif
   CALL deallocate_gvect(.TRUE.) ! Value .true. is hard coded in init.f90:195,
                                 !  here it prevents double free of gg variable.
 #if defined (__CUDA)

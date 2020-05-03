@@ -30,7 +30,9 @@ SUBROUTINE from_scratch( )
     USE energies,             ONLY : dft_energy_type, debug_energies
     USE dener,                ONLY : denl, denl6, dekin6, detot
     USE uspp,                 ONLY : vkb, becsum, deeq, nkb, okvan, nlcc_any
+#if defined (__CUDA)
     USE uspp_gpum,            ONLY : vkb_d
+#endif
     USE io_global,            ONLY : stdout, ionode
     USE core,                 ONLY : rhoc
     USE gvecw,                ONLY : ngw
@@ -137,7 +139,9 @@ SUBROUTINE from_scratch( )
     ! ... prefor calculates vkb (used by gram)
     !
     CALL prefor( eigr, vkb )
+#if defined (__CUDA)
     CALL dev_memcpy( vkb_d, vkb )
+#endif
     !
     nspin_wfc = nspin
     IF( force_pairing ) nspin_wfc = 1

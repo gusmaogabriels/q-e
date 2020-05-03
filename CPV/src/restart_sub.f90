@@ -34,7 +34,9 @@ SUBROUTINE from_restart( )
    USE efield_module,         ONLY : efield_berry_setup,  tefield, &
                                      efield_berry_setup2, tefield2
    USE uspp,                  ONLY : okvan, vkb, nkb, nlcc_any
+#if defined (__CUDA)
    USE uspp_gpum,             ONLY : vkb_d
+#endif
    USE cp_main_variables,     ONLY : ht0, htm, lambdap, lambda, lambdam, eigr, &
                                      sfac, taub, irb, eigrb, edft, bec_bgrp, dbec, idesc, iabox, nabox
    USE time_step,             ONLY : delt
@@ -164,7 +166,9 @@ SUBROUTINE from_restart( )
    CALL strucf( sfac, eigts1, eigts2, eigts3, mill, dffts%ngm )
    !
    CALL prefor( eigr, vkb )
+#if defined (__CUDA)
    CALL dev_memcpy( vkb_d, vkb )
+#endif
    !
    CALL formf( .TRUE. , eself )
    !

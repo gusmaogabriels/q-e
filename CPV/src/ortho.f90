@@ -376,7 +376,9 @@ CONTAINS
 
    SUBROUTINE compute_qs_times_betas( bephi, bec_row, qbephi, qbecp, idesc )
       USE uspp,           ONLY: nkb, qq_nt, indv_ijkb0, nkbus
+#if defined (__CUDA)
       USE uspp_gpum,      ONLY: qq_nt_d, using_qq_nt
+#endif
       USE uspp_param,     ONLY: nh, upf
       USE electrons_base, ONLY: nspin, nbsp_bgrp, iupdwn_bgrp, nupdwn_bgrp, nbsp, nupdwn, iupdwn
       USE ions_base,      ONLY: na, nat, nsp, ityp
@@ -405,7 +407,9 @@ CONTAINS
       qbephi = 0.d0
       qbecp  = 0.d0
  
+#if defined (__CUDA)
       CALL using_qq_nt(0)
+#endif
       !
       IF( nkbus > 0 ) THEN
          !

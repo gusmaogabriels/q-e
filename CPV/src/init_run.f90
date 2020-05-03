@@ -27,7 +27,9 @@ SUBROUTINE init_run()
   USE fft_base,                 ONLY : dfftp, dffts
   USE electrons_base,           ONLY : nspin, nbsp, nbspx, nupdwn, f
   USE uspp,                     ONLY : nkb, vkb, deeq, becsum,nkbus
+#if defined (__CUDA)
   USE uspp_gpum,                ONLY : vkb_d
+#endif
   USE core,                     ONLY : rhoc
   USE wavefunctions,            ONLY : c0_bgrp, cm_bgrp, allocate_cp_wavefunctions
   USE ensemble_dft,             ONLY : tens, z0t

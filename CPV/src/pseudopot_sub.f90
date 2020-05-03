@@ -615,7 +615,9 @@
       USE atom,       ONLY: rgrid
       USE uspp,       ONLY: indv
       use uspp,       only: qq_nt, beta
+#if defined (__CUDA)
       use uspp_gpum,  ONLY: using_qq_nt, using_qq_nt_d, qq_nt_d
+#endif
       USE betax,      only: refg, qradx, mmx, dqradx
       use smallbox_gvec,      only: ngb
       use control_flags, only: iprint, iverbosity
@@ -801,8 +803,8 @@
 
       end do
 
-      CALL using_qq_nt(2)
 #if defined (__CUDA)
+      CALL using_qq_nt(2)
       CALL using_qq_nt_d(0)
 !$cuf kernel do (3)
       DO is = 1, SIZE(qq_nt_d,3)
@@ -1059,7 +1061,9 @@
       use gvecw, only: ngw
       use cell_base, only: ainv
       use uspp, only: qq_nt, nhtolm, beta
+#if defined (__CUDA)
       use uspp_gpum,  ONLY: using_qq_nt, using_qq_nt_d, qq_nt_d
+#endif
       use constants, only: pi, fpi
       use ions_base, only: nsp
       use uspp_param, only: upf, lmaxq, lmaxkb, nbetam, nh
@@ -1156,8 +1160,8 @@
 
       end do
 
-      CALL using_qq_nt(2)
 #if defined (__CUDA)
+      CALL using_qq_nt(2)
       CALL using_qq_nt_d(0)
 !$cuf kernel do (3)
       DO is = 1, SIZE(qq_nt_d,3)

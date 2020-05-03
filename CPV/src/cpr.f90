@@ -24,7 +24,9 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
   USE core,                     ONLY : rhoc
   USE uspp_param,               ONLY : nhm, nh, ish
   USE uspp,                     ONLY : nkb, vkb, becsum, deeq, okvan, nlcc_any
+#if defined (__CUDA)
   USE uspp_gpum,                ONLY : vkb_d
+#endif
   USE energies,                 ONLY : eht, epseu, exc, etot, eself, enl, &
                                        ekin, atot, entropy, egrand, enthal, &
                                        ekincm, print_energies
@@ -534,7 +536,9 @@ SUBROUTINE cprmain( tau_out, fion_out, etot_out )
         ! ... prefor calculates vkb
         !
         CALL prefor( eigr, vkb )
+#if defined (__CUDA)
         CALL dev_memcpy( vkb_d, vkb )
+#endif
         !
      END IF
      !

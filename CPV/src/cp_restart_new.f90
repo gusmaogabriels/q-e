@@ -500,6 +500,9 @@ MODULE cp_restart_new
      IF (trhow) THEN
         ! Workaround: input rho in real space, bring it to reciprocal space
         ! To be reconsidered once the old I/O is gone
+#if defined (__PRINTOUT_RSPACE_CHDEN)
+        CALL printout_rspace_chden( rho )
+#endif
         ALLOCATE ( rhog(ngm, nspin) )
         CALL rho_r2g (dfftp,rho, rhog)
         filename = TRIM(dirname) // 'charge-density' 
@@ -1751,5 +1754,22 @@ MODULE cp_restart_new
     !
   END SUBROUTINE cp_read_zmat
   !------------------------------------------------------------------------
+  !
+  SUBROUTINE printout_rspace_chden( rho )
+     USE fft_base,                 ONLY : dfftp
+     IMPLICIT NONE
+     REAL(DP), INTENT(IN) :: rho(:,:)
+     INTEGER :: i, j, k
+     OPEN(unit=1000)
+     WRITE(1000,*) dfftp%nr1, dfftp%nr2, dfftp%nr3
+     DO k = 1, dfftp%nr3
+        DO j = 1, dfftp%nr2
+           DO i = 1, dfftp%nr1
+               WRITE(1000,*) rho( i + dfftp%nr1x *(j-1) + dfftp%nr1x*dfftp%nr2x*(k-1), 1 )
+           END DO
+        END DO
+     END DO
+     CLOSE(unit=1000)
+  END SUBROUTINE
   !
 END MODULE cp_restart_new

@@ -21,7 +21,9 @@ SUBROUTINE move_electrons_x( nfi, tprint, tfirst, tlast, b1, b2, b3, fion, &
                                    taub, lambda, lambdam, lambdap, vpot, dbec, idesc
   USE cell_base,            ONLY : omega, ibrav, h, press
   USE uspp,                 ONLY : becsum, vkb, nkb, nlcc_any
+#if defined (__CUDA)
   USE uspp_gpum,            ONLY : vkb_d
+#endif
   USE energies,             ONLY : ekin, enl, entropy, etot
   USE electrons_base,       ONLY : nbsp, nspin, f, nudx, nupdwn, nbspx_bgrp, nbsp_bgrp
   USE core,                 ONLY : rhoc
@@ -162,7 +164,9 @@ SUBROUTINE move_electrons_x( nfi, tprint, tfirst, tlast, b1, b2, b3, fion, &
      CALL newd( vpot, becsum, fion, tprint )
      !
      CALL prefor( eigr, vkb )
+#if defined (__CUDA)
      CALL dev_memcpy( vkb_d, vkb )
+#endif
      !
      IF( force_pairing ) THEN
         !
