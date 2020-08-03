@@ -65,7 +65,7 @@ END FUNCTION make_emended_upf_copy
 FUNCTION check(in) RESULT (out) 
       CHARACTER (LEN = *)     :: in
 #if defined(__PGI)
-      INTEGER, PARAMETER      :: length = 255 
+      INTEGER, PARAMETER      :: length = 1024 
       CHARACTER(LEN=length )  :: out 
 #else
       CHARACTER(LEN = LEN(in) )  :: out 
