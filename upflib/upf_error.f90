@@ -47,3 +47,9 @@ SUBROUTINE upf_error( calling_routine, message, ierr )
   END IF
   !
 END SUBROUTINE upf_error
+
+SUBROUTINE upf_msg (calling_routine, message) 
+  IMPLICIT NONE 
+  WRITE (UNIT=*, '(5X,"Message from routine ",A,":")') routine 
+  WRITE (UNIT=*, '(5X.A)') message 
+END SUBROUTINE 

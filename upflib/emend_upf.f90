@@ -83,7 +83,6 @@ FUNCTION check(in) RESULT (out)
            out(o:o) = in (i:i) 
          END IF
       END DO
-      IF (o > len(in)) CALL infomsg('emend_upf/check', &
-                            'BEWARE !!! Possible out of bounds while fixing pseudo')
+      IF (o > len(in)) CALL upf_msg ("make_emended_upf/check", "BEWARE!!! Possible out of bounds")
 END FUNCTION check
 END MODULE emend_upf_module 
