@@ -497,8 +497,8 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
           ELSE IF ( isolve == 2) then
              ! BEWARE npol should be added to the arguments
 !civn 
-             !CALL ppcg_k    ( h_psi, s_psi, okvan, h_diag, &
-              CALL ppcg_k_idx( h_psi, s_psi, okvan, h_diag, &
+             CALL ppcg_k    ( h_psi, s_psi, okvan, h_diag, &
+             !CALL ppcg_k_idx( h_psi, s_psi, okvan, h_diag, &
                          npwx, npw, nbnd, npol, evc, et(1,ik), btype(1,ik), &
                          0.1d0*ethr, max_ppcg_iter, notconv, ppcg_iter, sbsize , rrstep, iter )
              !
