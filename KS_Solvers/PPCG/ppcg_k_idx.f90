@@ -48,11 +48,7 @@ SUBROUTINE ppcg_k_idx( h_psi, s_psi, overlap, precondition, &
   ! ... local variables
   !
   COMPLEX(DP), ALLOCATABLE ::  hpsi(:,:), spsi(:,:), w(:,:), hw(:,:), sw(:,:), p(:,:), hp(:,:), sp(:,:)
-!civn target:
-! COMPLEX(DP)              ::  buffer(npwx*npol,nbnd), buffer1(npwx*npol,nbnd)
-  !COMPLEX(DP)              ::  buffer(npwx*npol,nbnd) ! to remove 
   COMPLEX(DP)              ::  buffer1(npwx*npol,sbsize)
-!
   COMPLEX(DP), ALLOCATABLE ::  K(:,:), K_store(:,:), M(:,:), M_store(:,:), cwork(:)
   REAL(DP), ALLOCATABLE    ::  rwork(:)
   INTEGER,  ALLOCATABLE    ::  iwork(:)
@@ -100,9 +96,6 @@ SUBROUTINE ppcg_k_idx( h_psi, s_psi, overlap, precondition, &
   !
   INTEGER :: np_ortho(2), ortho_parent_comm, ortho_cntx
   LOGICAL :: do_distr_diag_inside_bgrp
-!civn 
-  integer :: ii
-!
   !
   !
   res_array     = 0.0
@@ -110,7 +103,6 @@ SUBROUTINE ppcg_k_idx( h_psi, s_psi, overlap, precondition, &
   CALL start_clock( 'ppcg_k' )
   !
   !  ... Initialization and validation
-write(*,*) '@@1' ; flush(6) 
   CALL laxlib_getval( np_ortho = np_ortho, ortho_cntx = ortho_cntx, &
        ortho_parent_comm = ortho_parent_comm, &
        do_distr_diag_inside_bgrp = do_distr_diag_inside_bgrp )
@@ -183,17 +175,12 @@ write(*,*) '@@1' ; flush(6)
   call start_clock('ppcg:lock')
   nact_old = nact;
   CALL lock_epairs(kdim, nbnd, btype, w, kdimx, lock_tol, nact, act_idx)
-write(*,*) '@@2' ; flush(6) 
-!civn 
+  !
+  ! pack the active bands to the first columns (act_idx)
   CALL reshape_psi(psi, kdimx, nact, nbnd, act_idx, buffer1, 1) 
-write(*,*) '@@3' ; flush(6) 
   CALL reshape_psi(w, kdimx, nact, nbnd, act_idx, buffer1, 1) 
-write(*,*) '@@4' ; flush(6) 
   CALL reshape_psi(hpsi, kdimx, nact, nbnd, act_idx, buffer1, 1) 
-write(*,*) '@@5' ; flush(6) 
   if(overlap) CALL reshape_psi(spsi, kdimx, nact, nbnd, act_idx, buffer1, 1) 
-write(*,*) '@@6' ; flush(6)
-!
   call stop_clock('ppcg:lock')
   !
   ! ... Set up iteration parameters after locking
@@ -217,17 +204,12 @@ write(*,*) '@@6' ; flush(6)
   !---Begin the main loop
   !
   DO WHILE ( ((trdif > trtol) .OR. (trdif == -1.D0))  .AND. (iter <= maxter) .AND. (nact > 0) )
-!
-write(*,*) '@@6a', iter ; flush(6)
-!
      !
      ! ... apply the diagonal preconditioner
      !
      nblock = (npw-1) / blocksz +1         ! used to optimize some omp parallel do loops
      !$omp parallel do collapse(3)
      DO j = 1, nact ; DO ipol=0,npol-1 ; DO i=1,nblock
-!civn 
-!       w(1+(i-1)*blocksz+npwx*ipol:MIN(i*blocksz,npw)+npwx*ipol, act_idx(j)) =    &
         w(1+(i-1)*blocksz+npwx*ipol:MIN(i*blocksz,npw)+npwx*ipol, j) =    &
             w(1+(i-1)*blocksz+npwx*ipol:MIN(i*blocksz,npw)+npwx*ipol, j) / &
                 precondition(1+(i-1)*blocksz:MIN(i*blocksz,npw))
@@ -235,19 +217,13 @@ write(*,*) '@@6a', iter ; flush(6)
      !$omp end parallel do
      !
      call start_clock('ppcg:zgemm')
-!civn 
-!    call threaded_assign( buffer, w, kdimx, nact, act_idx )
      G(1:nbnd,1:nact) = C_ZERO
      CALL divide(inter_bgrp_comm,nbnd,n_start,n_end); my_n = n_end - n_start + 1; !write (*,*) nbnd,n_start,n_end
      if (overlap) then
         if (n_start .le. n_end) &
-!civn 
-!       CALL ZGEMM( 'C','N', my_n, nact, kdim, C_ONE, spsi(1,n_start), kdimx, buffer, kdimx, C_ZERO, G(n_start,1), nbnd )
         CALL ZGEMM( 'C','N', my_n, nact, kdim, C_ONE, spsi(1,n_start), kdimx, w, kdimx, C_ZERO, G(n_start,1), nbnd )
      else
         if (n_start .le. n_end) &
-!civn 
-!       CALL ZGEMM( 'C','N', my_n, nact, kdim, C_ONE,psi(1,n_start), kdimx, buffer, kdimx, C_ZERO, G(n_start,1), nbnd )
         CALL ZGEMM( 'C','N', my_n, nact, kdim, C_ONE,psi(1,n_start), kdimx, w, kdimx, C_ZERO, G(n_start,1), nbnd )
      end if
      CALL mp_sum( G(1:nbnd,1:nact), inter_bgrp_comm )
@@ -257,28 +233,19 @@ write(*,*) '@@6a', iter ; flush(6)
      !
      !     w = w - psi*G
      call start_clock('ppcg:zgemm')
-!civn 
-     !call threaded_assign( buffer, w, kdimx, nact, act_idx, bgrp_root_only=.true. )
      IF ( my_bgrp_id /= root_bgrp_id ) call threaded_memset( w, 0.d0, 2*kdimx*nact )
      if (n_start .le. n_end) &
-!civn 
-!    CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, psi(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, buffer, kdimx)
      CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, psi(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, w, kdimx)
      CALL mp_sum( w(:,1:nact), inter_bgrp_comm )
-!    w(:,act_idx(1:nact)) = buffer(:,1:nact)
      call stop_clock('ppcg:zgemm')
-!
      !
      ! ... Compute h*w
      call start_clock('ppcg:hpsi')
-     !call threaded_assign( buffer1, w, kdimx, nact, act_idx )
      CALL h_psi( npwx, npw, nact, w, hw )      
      if (clean) hw (npw+1:npwx,1:nact) = C_ZERO
-     !hw(:,act_idx(1:nact)) = buffer(:,1:nact)
      if (overlap) then ! ... Compute s*w
         CALL s_psi( npwx, npw, nact, w, sw )   
         if (clean) sw(npw+1:npwx,1:nact) = C_ZERO
-        !sw(:,act_idx(1:nact)) = buffer(:,1:nact)
      end if
      avg_iter = avg_iter + nact/dble(nbnd)
      call stop_clock('ppcg:hpsi')
@@ -291,17 +258,12 @@ write(*,*) '@@6a', iter ; flush(6)
         CALL divide(inter_bgrp_comm,nact,n_start,n_end); my_n = n_end - n_start + 1; !write (*,*) nact,n_start,n_end
         G(1:nact,1:nact) = C_ZERO
         if (overlap) then
-           !call threaded_assign( buffer, spsi, kdimx, nact, act_idx )
            if (n_start .le. n_end) &
            CALL ZGEMM('C','N', my_n, nact, kdim, C_ONE, spsi(1,n_start), kdimx, p, kdimx, C_ZERO, G(n_start,1), nbnd)
         else
-           !call threaded_assign( buffer,  psi, kdimx, nact, act_idx )
            if (n_start .le. n_end) &
            CALL ZGEMM('C','N', my_n, nact, kdim, C_ONE, psi(1,n_start), kdimx, p, kdimx, C_ZERO, G(n_start,1), nbnd)
         end if
-        !call threaded_assign( buffer1, p, kdimx, nact, act_idx )
-        !if (n_start .le. n_end) &
-        !CALL ZGEMM('C','N', my_n, nact, kdim, C_ONE, buffer(1,n_start), kdimx, p, kdimx, C_ZERO, G(n_start,1), nbnd)
         CALL mp_sum( G(1:nact,1:nact), inter_bgrp_comm )
         !
         CALL mp_sum( G(1:nact,1:nact), intra_bgrp_comm )
@@ -309,37 +271,25 @@ write(*,*) '@@6a', iter ; flush(6)
         !
         ! p = p - psi*G, hp = hp - hpsi*G, sp = sp - spsi*G
         call start_clock('ppcg:zgemm')
-        !call threaded_assign( buffer, p, kdimx, nact, act_idx, bgrp_root_only = .true. )
         IF ( my_bgrp_id /= root_bgrp_id ) call threaded_memset( p, 0.d0, 2*kdimx*nact )
-        !call threaded_assign( buffer, psi, kdimx, nact, act_idx )
         if (n_start .le. n_end) & ! could be done differently
-        !CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, buffer(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, p, kdimx)
         CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, psi(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, p, kdimx)
         CALL mp_sum( p(:,1:nact), inter_bgrp_comm )
-        !p(:,act_idx(1:nact)) = buffer(:,1:nact)
         call stop_clock('ppcg:zgemm')
         !
         call start_clock('ppcg:zgemm')
-        !call threaded_assign( buffer, hp, kdimx, nact, act_idx, bgrp_root_only = .true. )
         IF ( my_bgrp_id /= root_bgrp_id ) call threaded_memset( hp, 0.d0, 2*kdimx*nact )
-        !call threaded_assign( buffer, hpsi, kdimx, nact, act_idx )
         if (n_start .le. n_end) &
-        !CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, buffer(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, hp, kdimx)
         CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, hpsi(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, hp, kdimx)
         CALL mp_sum( hp(:,1:nact), inter_bgrp_comm )
-        !hp(:,act_idx(1:nact)) = buffer(:,1:nact)
         call stop_clock('ppcg:zgemm')
         !
         if (overlap) then
            call start_clock('ppcg:zgemm')
-           !call threaded_assign( buffer, sp, kdimx, nact, act_idx, bgrp_root_only = .true. )
            IF ( my_bgrp_id /= root_bgrp_id ) call threaded_memset( sp, 0.d0, 2*kdimx*nact )
-           !call threaded_assign( buffer, spsi, kdimx, nact, act_idx )
            if (n_start .le. n_end) &
-           !CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, buffer(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, sp, kdimx)
            CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, spsi(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, sp, kdimx)
            CALL mp_sum( sp(:,1:nact), inter_bgrp_comm )
-           !sp(:,act_idx(1:nact)) = buffer(:,1:nact)
            call stop_clock('ppcg:zgemm')
         end if
      END IF
@@ -366,63 +316,37 @@ write(*,*) '@@6a', iter ; flush(6)
         M = C_ZERO
         !
         call start_clock('ppcg:zgemm')
-        !call threaded_assign( buffer, psi, kdimx, l, col_idx )
-        !call threaded_assign( buffer1, hpsi, kdimx, l, col_idx )
-        !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, K, sbsize3)
         CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, hpsi(1,(j-1)*sbsize + 1), &
                                                                                         kdimx, C_ZERO, K, sbsize3)
         !
         if (overlap) then
-           !call threaded_assign( buffer1, spsi, kdimx, l, col_idx ); if (clean) buffer1(npw+1:npwx,1:l) = C_ZERO
            CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, spsi(1,(j-1)*sbsize + 1), &
                                                                                        kdimx, C_ZERO, M, sbsize3)
         else
-           !call threaded_assign( buffer1, buffer, kdimx, l )
            CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, psi(1,(j-1)*sbsize + 1), &
                                                                                        kdimx, C_ZERO, M, sbsize3)
         end if
-        !ALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, M, sbsize3)
-        !
-        ! ---
-        !call threaded_assign( buffer, w, kdimx, l, col_idx )
-        !call threaded_assign( buffer1, hw, kdimx, l, col_idx )
-!civn 
-        !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, K(l+1, l+1), sbsize3)
         CALL ZGEMM('C','N', l, l, kdim, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, hw(1,(j-1)*sbsize + 1), &
                                                                            kdimx, C_ZERO, K(l+1, l+1), sbsize3)
         !
         if (overlap) then
-           !call threaded_assign( buffer1, sw, kdimx, l, col_idx )
            CALL ZGEMM('C','N', l, l, kdim, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, sw(1,(j-1)*sbsize + 1), kdimx, &
                                                                                     C_ZERO, M(l+1, l+1 ), sbsize3)
         else
-           !call threaded_assign( buffer1, buffer, kdimx, l )
            CALL ZGEMM('C','N', l, l, kdim, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, w(1,(j-1)*sbsize + 1), kdimx, &
                                                                                      C_ZERO, M(l+1, l+1 ), sbsize3)
         end if
-!civn (moved up)
-!       CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, M(l+1, l+1 ), sbsize3)
-        !
-        ! ---
-        !call threaded_assign( buffer, psi, kdimx, l, col_idx )
-        !call threaded_assign( buffer1, hw, kdimx, l, col_idx ) 
         if (clean) hw(npw+1:npwx,(j-1)*sbsize+1:(j-1)*sbsize+l) = C_ZERO
-!civn 
-        !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, K(1, l+1), sbsize3)
         CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, hw(1,(j-1)*sbsize + 1), kdimx, &
                                                                                         C_ZERO, K(1, l+1), sbsize3)
         !
         if (overlap) then
-           !call threaded_assign( buffer1, sw, kdimx, l, col_idx )
            CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, sw(1,(j-1)*sbsize + 1), kdimx, &
                                                                                           C_ZERO, M(1, l+1), sbsize3)
         else
-           !call threaded_assign( buffer1,  w, kdimx, l, col_idx )
            CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, w(1,(j-1)*sbsize + 1), kdimx, &
                                                                                           C_ZERO, M(1, l+1), sbsize3)
         end if
-!civn 
-        !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, M(1, l+1), sbsize3)
         call stop_clock('ppcg:zgemm')
         !
         ! ---
@@ -430,67 +354,41 @@ write(*,*) '@@6a', iter ; flush(6)
 !ev        IF ( MOD(iter,rr_step) /= 1 ) THEN   ! In this case, P is skipped after each RR
         IF ( iter  /= 1 ) THEN
           call start_clock('ppcg:zgemm')
-          !call threaded_assign( buffer,  p, kdimx, l, col_idx )
-          !call threaded_assign( buffer1,  hp, kdimx, l, col_idx )
-!civn 
-          !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, K(2*l + 1, 2*l+1), sbsize3)
           CALL ZGEMM('C','N', l, l, kdim, C_ONE, p(1,(j-1)*sbsize + 1), kdimx, hp(1,(j-1)*sbsize + 1), &
                                                                        kdimx, C_ZERO, K(2*l + 1, 2*l+1), sbsize3)
           !
           if (overlap) then
-             !call threaded_assign( buffer1,  sp, kdimx, l, col_idx )
              CALL ZGEMM('C','N', l, l, kdim, C_ONE, p(1,(j-1)*sbsize + 1), kdimx, sp(1,(j-1)*sbsize + 1), &
                                                                          kdimx, C_ZERO, M(2*l + 1, 2*l+1), sbsize3)
           else
-             !call threaded_assign( buffer1,  buffer, kdimx, l )
              CALL ZGEMM('C','N', l, l, kdim, C_ONE, p(1,(j-1)*sbsize + 1), kdimx, p(1,(j-1)*sbsize + 1), &
                                                                          kdimx, C_ZERO, M(2*l + 1, 2*l+1), sbsize3)
           end if
-!civn 
-          !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, M(2*l + 1, 2*l+1), sbsize3)
-          !
-          ! ---
-          !call threaded_assign( buffer,  psi, kdimx, l, col_idx )
-          !call threaded_assign( buffer1,  hp, kdimx, l, col_idx )
-!civn 
-          !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, K(1, 2*l+1), sbsize3)
           CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, hp(1,(j-1)*sbsize + 1), kdimx, &
                                                                                          C_ZERO, K(1, 2*l+1), sbsize3)
           !
           if (overlap) then
-             !call threaded_assign( buffer1,  sp, kdimx, l, col_idx )
              CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, sp(1,(j-1)*sbsize + 1), kdimx, &
                                                                                          C_ZERO, M(1, 2*l+1), sbsize3)
           else
-             !call threaded_assign( buffer1,  p, kdimx, l, col_idx )
              CALL ZGEMM('C','N', l, l, kdim, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, p(1,(j-1)*sbsize + 1), kdimx, &
                                                                                        C_ZERO, M(1, 2*l+1), sbsize3)
           end if
-!civn 
-          !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, M(1, 2*l+1), sbsize3)
           call stop_clock('ppcg:zgemm')
           !
           ! ---
           !
           call start_clock('ppcg:zgemm')
-          !call threaded_assign( buffer,  w, kdimx, l, col_idx )
-          !call threaded_assign( buffer1,  hp, kdimx, l, col_idx )
-!civn 
-          !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, K(l+1, 2*l+1), sbsize3)
           CALL ZGEMM('C','N', l, l, kdim, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, hp(1,(j-1)*sbsize + 1), kdimx, &
                                                                                    C_ZERO, K(l+1, 2*l+1), sbsize3)
           !
           if (overlap) then
-             !call threaded_assign( buffer1,  sp, kdimx, l, col_idx )
              CALL ZGEMM('C','N', l, l, kdim, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, sp(1,(j-1)*sbsize + 1), kdimx, &
                                                                             C_ZERO, M(l+1, 2*l+1), sbsize3)
           else
-             !call threaded_assign( buffer1,  p, kdimx, l, col_idx )
              CALL ZGEMM('C','N', l, l, kdim, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, p(1,(j-1)*sbsize + 1), kdimx, &
                                                                               C_ZERO, M(l+1, 2*l+1), sbsize3)
           end if
-!civn
-          !CALL ZGEMM('C','N', l, l, kdim, C_ONE, buffer, kdimx, buffer1, kdimx, C_ZERO, M(l+1, 2*l+1), sbsize3)
           call stop_clock('ppcg:zgemm')
           !
         END IF
@@ -509,11 +407,6 @@ write(*,*) '@@6a', iter ; flush(6)
      ! ... perform nsb 'separate RQ minimizations' and update approximate subspace
 
      idx(:) = 0 ! find the inactive columns to be kept by root_bgrp_id only
-!civn 
-!     if (my_bgrp_id == root_bgrp_id) then
-!        idx(1:nbnd) = 1 
-!        idx(act_idx(1:nact)) = 0
-!     end if
      idx(( n_start-1) * sbsize + 1 : min( n_end * sbsize, nact) ) = 1 
      if (my_bgrp_id == root_bgrp_id) then
         idx(nact + 1:nbnd) = 1 
@@ -567,64 +460,39 @@ write(*,*) '@@6a', iter ; flush(6)
           coord_p(1 : l, 1 : l) = K(2*l+1 : 3*l, 1 : l)
           !
           call start_clock('ppcg:zgemm')
-          !call threaded_assign( buffer1,  p, kdimx, l, col_idx )
-          !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_p, sbsize, C_ZERO, buffer, kdimx)
           CALL ZGEMM('N','N', kdim, l, l, C_ONE, p(1,(j-1)*sbsize + 1), kdimx, coord_p, sbsize, C_ZERO, buffer1, kdimx)
-          !call threaded_assign( buffer1,  w, kdimx, l, col_idx )
-          !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_w, sbsize, C_ONE, buffer, kdimx)
           CALL ZGEMM('N','N', kdim, l, l, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, coord_w, sbsize, C_ONE, buffer1, kdimx)
-!civn 
-          !p(:,col_idx(1:l))  = buffer(:,1:l)
           p(:,(j-1)*sbsize + 1: (j-1)*sbsize + l)  = buffer1(:,1:l)
           call stop_clock('ppcg:zgemm')
           !
           call start_clock('ppcg:zgemm')
-          !call threaded_assign( buffer1,  hp, kdimx, l, col_idx )
-          !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_p, sbsize, C_ZERO, buffer, kdimx)
           CALL ZGEMM('N','N', kdim, l, l, C_ONE, hp(1,(j-1)*sbsize + 1), kdimx, coord_p, sbsize, C_ZERO, buffer1, kdimx)
-          !call threaded_assign( buffer1,  hw, kdimx, l, col_idx )
-          !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_w, sbsize, C_ONE, buffer, kdimx)
           CALL ZGEMM('N','N', kdim, l, l, C_ONE, hw(1,(j-1)*sbsize + 1), kdimx, coord_w, sbsize, C_ONE, buffer1, kdimx)
-          !hp(:,col_idx(1:l))  = buffer(:,1:l)
           hp(:,(j-1)*sbsize + 1: (j-1)*sbsize + l)  = buffer1(:,1:l)
           call stop_clock('ppcg:zgemm')
           !
           if (overlap) then
              call start_clock('ppcg:zgemm')
-             !call threaded_assign( buffer1,  sp, kdimx, l, col_idx )
-             !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_p, sbsize, C_ZERO, buffer, kdimx)
              CALL ZGEMM('N','N', kdim, l, l, C_ONE, sp(1,(j-1)*sbsize + 1), kdimx, coord_p, sbsize, C_ZERO, buffer1, kdimx)
-             !call threaded_assign( buffer1,  sw, kdimx, l, col_idx )
-             !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_w, sbsize, C_ONE, buffer, kdimx)
              CALL ZGEMM('N','N', kdim, l, l, C_ONE, sw(1,(j-1)*sbsize + 1), kdimx, coord_w, sbsize, C_ONE, buffer1, kdimx)
-             !sp(:,col_idx(1:l))  = buffer(:,1:l)
              sp(:,(j-1)*sbsize + 1: (j-1)*sbsize + l)  = buffer1(:,1:l)
              call stop_clock('ppcg:zgemm')
           end if
        ELSE
           !
           call start_clock('ppcg:zgemm')
-          !call threaded_assign( buffer1,  w, kdimx, l, col_idx )
-          !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_w, sbsize, C_ZERO, buffer, kdimx)
           CALL ZGEMM('N','N', kdim, l, l, C_ONE, w(1,(j-1)*sbsize + 1), kdimx, coord_w, sbsize, C_ZERO, buffer1, kdimx)
-          !p(:,col_idx(1:l)) = buffer(:, 1:l)
           p(:,(j-1)*sbsize + 1: (j-1)*sbsize + l) = buffer1(:, 1:l)
           call stop_clock('ppcg:zgemm')
           !
           call start_clock('ppcg:zgemm')
-          !call threaded_assign( buffer1,  hw, kdimx, l, col_idx )
-          !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_w, sbsize, C_ZERO, buffer, kdimx)
           CALL ZGEMM('N','N', kdim, l, l, C_ONE, hw(1,(j-1)*sbsize + 1), kdimx, coord_w, sbsize, C_ZERO, buffer1, kdimx)
-          !hp(:,col_idx(1:l)) = buffer(:, 1:l)
           hp(:,(j-1)*sbsize + 1: (j-1)*sbsize + l) = buffer1(:, 1:l)
           call stop_clock('ppcg:zgemm')
           !
           if (overlap) then
              call start_clock('ppcg:zgemm')
-             !call threaded_assign( buffer1,  sw, kdimx, l, col_idx )
-             !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_w, sbsize, c_ZERO, buffer, kdimx)
              CALL ZGEMM('N','N', kdim, l, l, C_ONE, sw(1,(j-1)*sbsize + 1), kdimx, coord_w, sbsize, c_ZERO, buffer1, kdimx)
-             !sp(:,col_idx(1:l)) = buffer(:, 1:l)
              sp(:,(j-1)*sbsize + 1: (j-1)*sbsize + l) = buffer1(:, 1:l)
              call stop_clock('ppcg:zgemm')
           end if
@@ -632,29 +500,18 @@ write(*,*) '@@6a', iter ; flush(6)
        !
        ! Update the sub-blocks of psi and hpsi (and spsi)
        call start_clock('ppcg:zgemm')
-       !call threaded_assign( buffer1,  psi, kdimx, l, col_idx )
-       !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_psi, sbsize, C_ZERO, buffer, kdimx)
        CALL ZGEMM('N','N', kdim, l, l, C_ONE, psi(1,(j-1)*sbsize + 1), kdimx, coord_psi, sbsize, C_ZERO, buffer1, kdimx)
-       !psi(:, col_idx(1:l))  = buffer(:,1:l) + p(:,col_idx(1:l))
        psi(:, (j-1)*sbsize + 1: (j-1)*sbsize + l)  = buffer1(:,1:l) + p(:,(j-1)*sbsize + 1: (j-1)*sbsize + l)
        call stop_clock('ppcg:zgemm')
        !
        call start_clock('ppcg:zgemm')
-       !call threaded_assign( buffer1,  hpsi, kdimx, l, col_idx )
-       !call threaded_assign( buffer,  hpsi, kdimx, l, col_idx )
-       !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_psi, sbsize, C_ZERO, buffer, kdimx)
        CALL ZGEMM('N','N', kdim, l, l, C_ONE, hpsi(1,(j-1)*sbsize + 1), kdimx, coord_psi, sbsize, C_ZERO, buffer1, kdimx)
-       !hpsi(:,col_idx(1:l)) = buffer(:,1:l) + hp(:,col_idx(1:l))
        hpsi(:, (j-1)*sbsize + 1: (j-1)*sbsize + l)  = buffer1(:,1:l) + hp(:,(j-1)*sbsize + 1: (j-1)*sbsize + l)
        call stop_clock('ppcg:zgemm')
        !
        if (overlap) then
           call start_clock('ppcg:zgemm')
-          !call threaded_assign( buffer1,  spsi, kdimx, l, col_idx )
-          !call threaded_assign( buffer,  spsi, kdimx, l, col_idx )
-          !CALL ZGEMM('N','N', kdim, l, l, C_ONE, buffer1, kdimx, coord_psi, sbsize, C_ZERO, buffer, kdimx)
           CALL ZGEMM('N','N', kdim, l, l, C_ONE, spsi(1,(j-1)*sbsize + 1), kdimx, coord_psi, sbsize, C_ZERO, buffer1, kdimx)
-          !spsi(:,col_idx(1:l)) = buffer(:,1:l) + sp(:,col_idx(1:l))
           spsi(:, (j-1)*sbsize + 1: (j-1)*sbsize + l) = buffer1(:,1:l) + sp(:,(j-1)*sbsize + 1: (j-1)*sbsize + l)
           call stop_clock('ppcg:zgemm')
        end if
@@ -689,15 +546,12 @@ write(*,*) '@@6a', iter ; flush(6)
     IF ( MOD(iter, rr_step) == 0 ) THEN
        !
        call start_clock('ppcg:RR')
-!civn 
+       !
+       ! unpack the active bands to the sparse order to compute eigenvalues 
        CALL reshape_psi(psi, kdimx, nact, nbnd, act_idx, buffer1, -1) 
        CALL reshape_psi(hpsi, kdimx, nact, nbnd, act_idx, buffer1, -1) 
        if(overlap) CALL reshape_psi(spsi, kdimx, nact, nbnd, act_idx, buffer1, -1) 
-!
        CALL extract_epairs_dmat(kdim, nbnd, kdimx, e, psi, hpsi, spsi )
-!civn 
-write(*,*) e(:)
-!
        call stop_clock('ppcg:RR')
        !
        IF (print_info >= 2) WRITE(stdout, *) 'RR has been invoked.' ; !CALL flush( stdout )
@@ -725,11 +579,11 @@ write(*,*) e(:)
        call start_clock('ppcg:lock')
        nact_old = nact;
        CALL lock_epairs(kdim, nbnd, btype, w, kdimx, lock_tol, nact, act_idx)
-!civn 
+       !
+       ! pack the active bands to the first columns (act_idx)
        CALL reshape_psi(psi, kdimx, nact, nbnd, act_idx, buffer1, 1) 
        CALL reshape_psi(hpsi, kdimx, nact, nbnd, act_idx, buffer1, 1) 
        if(overlap) CALL reshape_psi(spsi, kdimx, nact, nbnd, act_idx, buffer1, 1) 
-!
        call stop_clock('ppcg:lock')
        !
        ! ... Set up iteration parameters after locking
@@ -747,67 +601,41 @@ write(*,*) e(:)
       IF ( .NOT. force_repmat ) THEN
          !
          call start_clock('ppcg:cholQR')
-         !call threaded_assign( buffer,  psi, kdimx, nact, act_idx )
          if (overlap) then
-            !call threaded_assign( buffer1,  spsi, kdimx, nact, act_idx )
             CALL cholQR_dmat(kdim, nact, psi, spsi, kdimx, Gl, idesc)
          else
-            !call threaded_assign( buffer1,  buffer, kdimx, nact )
             CALL cholQR_dmat(kdim, nact, psi, psi, kdimx, Gl, idesc)
          end if
          !
          call stop_clock('ppcg:cholQR')
          !
-         !psi(:,act_idx(1:nact)) = buffer(:,1:nact)
-         !
-         !call threaded_assign( buffer1,  hpsi, kdimx, nact, act_idx )
          call start_clock('ppcg:ZTRSM')
          CALL zgemm_dmat( kdim, nact, kdimx, idesc, C_ONE, hpsi, Gl, C_ZERO, hpsi )
          call stop_clock('ppcg:ZTRSM')
          !
-         !hpsi(:,act_idx(1:nact)) = buffer(:,1:nact)
-         !
          if (overlap) then
-            !call threaded_assign( buffer1,  spsi, kdimx, nact, act_idx )
             call start_clock('ppcg:ZTRSM')
             CALL zgemm_dmat( kdim, nact, kdimx, idesc, C_ONE, spsi, Gl, C_ZERO, spsi )
             call stop_clock('ppcg:ZTRSM')
-            !
-            !spsi(:,act_idx(1:nact)) = buffer(:,1:nact)
          end if
       ELSE
          !
          call start_clock('ppcg:cholQR')
-         !call threaded_assign( buffer,  psi, kdimx, nact, act_idx )
          if (overlap) then
-            !call threaded_assign( buffer1,  spsi, kdimx, nact, act_idx )
             CALL cholQR(kdim, nact, psi, spsi, kdimx, G, nbnd)
          else
-            !call threaded_assign( buffer1,  buffer, kdimx, nact )
             CALL cholQR(kdim, nact, psi, psi, kdimx, G, nbnd)
          end if
-         !
-         !CALL cholQR(kdim, nact, buffer, buffer1, kdimx, G, nbnd)
          call stop_clock('ppcg:cholQR')
-         !
-         !psi(:,act_idx(1:nact)) = buffer(:,1:nact)
-         !
-         !call threaded_assign( buffer,  hpsi, kdimx, nact, act_idx )
          !
          call start_clock('ppcg:ZTRSM')
          CALL ZTRSM('R', 'U', 'N', 'N', kdim, nact, C_ONE, G, nbnd, hpsi, kdimx)
          call stop_clock('ppcg:ZTRSM')
          !
-         !hpsi(:,act_idx(1:nact)) = buffer(:,1:nact)
-         !
          if (overlap) then
-            !call threaded_assign( buffer,  spsi, kdimx, nact, act_idx )
-            !
             call start_clock('ppcg:ZTRSM')
             CALL ZTRSM('R', 'U', 'N', 'N', kdim, nact, C_ONE, G, nbnd, spsi, kdimx)
             call stop_clock('ppcg:ZTRSM')
-            !
-            !spsi(:,act_idx(1:nact)) = buffer(:,1:nact)
          end if
       END IF
 !! EV end
@@ -815,8 +643,6 @@ write(*,*) e(:)
        ! ... Compute the new subspace residual for active columns
        !
        !  G = psi'hpsi
-       !call threaded_assign( buffer,  psi, kdimx, nact, act_idx )
-       !call threaded_assign( buffer1,  hpsi, kdimx, nact, act_idx )
        call start_clock('ppcg:zgemm')
        G = C_ZERO
        CALL divide(inter_bgrp_comm,nact,n_start,n_end); my_n = n_end - n_start + 1; !write (*,*) nact,n_start,n_end
@@ -828,28 +654,20 @@ write(*,*) e(:)
        call stop_clock('ppcg:zgemm')
        !
        ! w = hpsi - spsi*G
-       !call threaded_assign( buffer,  hpsi, kdimx, nact, act_idx, bgrp_root_only=.true. )
        IF ( my_bgrp_id /= root_bgrp_id ) then 
          call threaded_memset( w, 0.d0, 2*kdimx*nact )
        ELSE
          w(:,1:nact) = hpsi(:,1:nact)
        END IF 
        if (overlap) then
-          !call threaded_assign( buffer1,  spsi, kdimx, nact, act_idx )
           if (n_start .le. n_end) &
           CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, spsi(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, w, kdimx)
        else
-          !call threaded_assign( buffer1,   psi, kdimx, nact, act_idx )
           if (n_start .le. n_end) &
           CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, psi(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, w, kdimx)
        end if
        call start_clock('ppcg:zgemm')
-       !if (n_start .le. n_end) &
-       !CALL ZGEMM('N','N', kdim, nact, my_n, -C_ONE, buffer1(1,n_start), kdimx, G(n_start,1), nbnd, C_ONE, buffer, kdimx)
-       !CALL mp_sum( buffer(:,1:nact), inter_bgrp_comm )
        CALL mp_sum( w(:,1:nact), inter_bgrp_comm )
-       !w(:,act_idx(1:nact)) = buffer(:,1:nact);
-
        call stop_clock('ppcg:zgemm')
        !
        ! ... Compute trace of the projected matrix on current iteration
@@ -876,7 +694,7 @@ write(*,*) e(:)
     !
  END DO   !---End the main loop
  !
-!civn 
+ ! unpack the (no-more-)active bands to the sparse order to compute eigenvalues and return the output psi
  CALL reshape_psi(psi, kdimx, nact, nbnd, act_idx, buffer1, -1) 
 !
 ! IF (nact > 0) THEN
@@ -884,14 +702,11 @@ write(*,*) e(:)
  ! if nact==0 then the RR has just been performed
  ! in the main loop
     call start_clock('ppcg:RR')
-!civn
+    !
+    ! unpack the (no-more-)active bands to the sparse order to compute eigenvalues and return the output 
     CALL reshape_psi(hpsi, kdimx, nact, nbnd, act_idx, buffer1, -1) 
     if(overlap) CALL reshape_psi(spsi, kdimx, nact, nbnd, act_idx, buffer1, -1) 
-!
     CALL extract_epairs_dmat(kdim, nbnd, kdimx, e, psi, hpsi, spsi )
-!civn 
-write(*,*) e(:)
-!
     call stop_clock('ppcg:RR')
     !
     ! ... Compute residuals
@@ -933,13 +748,10 @@ write(*,*) e(:)
  !
  CALL stop_clock( 'ppcg_k' )
  !
-
 !!!EV-BANDS
 if (print_info == 3) then
     write (stdout,'(1pD9.2)') ( res_array(j), j=1,maxter )
 end if
-
-write(*,*) '@@7' ; flush(6)
  !
  RETURN
    !
