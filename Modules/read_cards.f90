@@ -212,6 +212,10 @@ CONTAINS
          !
          CALL card_wannier_ac( input_line )
 
+      ELSEIF ( trim(card) == 'HUBBARD' ) THEN
+         !
+         CALL card_hubbard( input_line )
+
       ELSE
          !
          IF ( ionode ) &
@@ -1935,4 +1939,55 @@ CONTAINS
       RETURN
       !
    END SUBROUTINE card_wannier_ac
+   !
+   !------------------------------------------------------------------------
+   !    BEGIN manual
+   !----------------------------------------------------------------------
+   !
+   !
+   ! TEMPLATE
+   !
+   !      This is a template card info section
+   !
+   ! Syntax:
+   !
+   !    TEMPLATE
+   !     RVALUE IVALUE
+   !
+   ! Example:
+   !
+   !    ???
+   !
+   ! Where:
+   !
+   !
+   !----------------------------------------------------------------------
+   !    END manual
+   !------------------------------------------------------------------------
+   ! 
+   SUBROUTINE card_hubbard( input_line )
+      !
+      IMPLICIT NONE
+      !
+      CHARACTER(len=256) :: input_line
+      CHARACTER(len=256) :: aux
+      LOGICAL :: t_card_hubbard = .false.
+      ! To avoid two occurencies of HUBBARD
+      !
+      IF ( t_card_hubbard ) THEN
+         CALL errore( ' card_hubbard  ', ' two occurrences', 2 )
+      ENDIF
+      t_card_hubbard = .true.
+      !
+      READ(input_line,*) aux, U_projection_type
+      IF(aux/='HUBBARD') CALL errore('card_hubbard', 'something wrong', 1)
+      !
+      ! Insert sanity check on U_projection, then start reading line by line     
+      !
+      ! ... (to be written) 
+      !
+      RETURN
+      !
+   END SUBROUTINE card_hubbard
+   !
 END MODULE read_cards_module
