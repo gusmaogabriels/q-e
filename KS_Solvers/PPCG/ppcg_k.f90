@@ -97,6 +97,9 @@ SUBROUTINE ppcg_k( h_psi, s_psi, overlap, precondition, &
   res_array     = 0.0
   !
   CALL start_clock( 'ppcg_k' )
+!civn 
+  write(*,*) 'using ppcg_k'
+!
   !
   !  ... Initialization and validation
 
@@ -558,9 +561,6 @@ SUBROUTINE ppcg_k( h_psi, s_psi, overlap, precondition, &
        !
        call start_clock('ppcg:RR')
        CALL extract_epairs_dmat(kdim, nbnd, kdimx, e, psi, hpsi, spsi )
-!civn 
-write(*,*) e(:)
-!
        call stop_clock('ppcg:RR')
        !
        IF (print_info >= 2) WRITE(stdout, *) 'RR has been invoked.' ; !CALL flush( stdout )
@@ -727,9 +727,6 @@ write(*,*) e(:)
  ! in the main loop
     call start_clock('ppcg:RR')
     CALL extract_epairs_dmat(kdim, nbnd, kdimx, e, psi, hpsi, spsi )
-!civn 
-write(*,*) e(:)
-!
     call stop_clock('ppcg:RR')
     !
     ! ... Compute residuals

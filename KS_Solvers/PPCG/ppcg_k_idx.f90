@@ -101,6 +101,9 @@ SUBROUTINE ppcg_k_idx( h_psi, s_psi, overlap, precondition, &
   res_array     = 0.0
   !
   CALL start_clock( 'ppcg_k' )
+!civn 
+  write(*,*) 'using ppcg_k_idx'
+!
   !
   !  ... Initialization and validation
   CALL laxlib_getval( np_ortho = np_ortho, ortho_cntx = ortho_cntx, &
