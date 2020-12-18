@@ -135,7 +135,7 @@ SUBROUTINE post_xml_init (  )
   USE paw_onecenter,        ONLY : paw_potential
   USE dfunct,               ONLY : newd
   USE funct,                ONLY : get_dft_name
-  USE ldaU,                 ONLY : lda_plus_u, eth, init_lda_plus_u, U_projection, &
+  USE ldaU,                 ONLY : lda_plus_u, eth, init_lda_plus_u, Hubbard_manifold, &
                                    lda_plus_u_kind
   USE esm,                  ONLY : do_comp_esm, esm_init
   USE Coul_cut_2D,          ONLY : do_cutoff_2D, cutoff_fact 
@@ -227,7 +227,7 @@ SUBROUTINE post_xml_init (  )
   IF (tbeta_smoothing) CALL init_us_b0()
   IF (tq_smoothing) CALL init_us_0()
   CALL init_us_1()
-  IF ( lda_plus_U .AND. ( U_projection == 'pseudo' ) ) CALL init_q_aeps()
+  IF ( lda_plus_U .AND. ( Hubbard_manifold == 'pseudo' ) ) CALL init_q_aeps()
   CALL init_at_1()
   !
   CALL struc_fact( nat, tau, nsp, ityp, ngm, g, bg, dfftp%nr1, dfftp%nr2,&

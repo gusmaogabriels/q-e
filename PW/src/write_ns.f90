@@ -36,55 +36,6 @@ SUBROUTINE write_ns
   IF ( 2*Hubbard_lmax+1 > ldmx ) &
            CALL errore( 'write_ns', 'ldmx is too small', 1 )
   !
-  ! ... output of +U parameters
-  !
-  WRITE (stdout,*) 'LDA+U parameters:'
-  !
-  IF (lda_plus_u_kind == 0) THEN
-     !
-     DO nt = 1, ntyp
-        IF (is_hubbard(nt)) THEN
-          IF (Hubbard_U(nt) /= 0.d0) WRITE(stdout,'(a,i2,a,f12.8)')          & 
-                       'U(',nt,')     =', Hubbard_U(nt)*rytoev
-          IF (Hubbard_J0(nt) /= 0.d0) WRITE(stdout,'(a,i2,a,f12.8)')         &
-                       'J0(',nt,')     =', Hubbard_J0(nt)*rytoev
-          IF (Hubbard_alpha(nt) /= 0.d0) WRITE(stdout,'(a,i2,a,f12.8)')      &
-                       'alpha(',nt,') =', Hubbard_alpha(nt)*rytoev
-          IF (Hubbard_beta(nt) /= 0.d0) WRITE(stdout,'(a,i2,a,f12.8)')       &
-                       'beta(',nt,') =', Hubbard_beta(nt)*rytoev
-        ENDIF
-        IF (is_hubbard_back(nt)) THEN
-          IF (Hubbard_U_back(nt) /= 0.d0) WRITE(stdout,'(a,i2,a,f12.8)')     &
-                       'U_back(',nt,')     =', Hubbard_U_back(nt)*rytoev
-          IF (Hubbard_alpha_back(nt) /= 0.d0) WRITE(stdout,'(a,i2,a,f12.8)') &
-                       'alpha_back(',nt,') =', Hubbard_alpha_back(nt)*rytoev
-      ENDIF
-     ENDDO
-     !
-  ELSEIF (lda_plus_u_kind == 1) THEN
-     !
-     DO nt = 1, ntyp
-        IF (Hubbard_U(nt) /= 0.d0) THEN
-           IF (Hubbard_l(nt) == 0) THEN
-              WRITE(stdout,'(a,i2,a,f12.8)') 'U(',nt,') =', Hubbard_U(nt) * rytoev
-           ELSEIF (Hubbard_l(nt) == 1) THEN
-              WRITE(stdout,'(2(a,i3,a,f9.4,3x))') 'U(',nt,') =', Hubbard_U(nt)*rytoev,    &
-                                                  'J(',nt,') =', Hubbard_J(1,nt)*rytoev
-           ELSEIF (Hubbard_l(nt) == 2) THEN
-              WRITE(stdout,'(3(a,i3,a,f9.4,3x))') 'U(',nt,') =', Hubbard_U(nt)*rytoev,    &
-                                                  'J(',nt,') =', Hubbard_J(1,nt)*rytoev,  &
-                                                  'B(',nt,') =', Hubbard_J(2,nt)*rytoev
-           ELSEIF (Hubbard_l(nt) == 3) THEN
-              WRITE(stdout,'(4(a,i3,a,f9.4,3x))') 'U (',nt,') =', Hubbard_U(nt)*rytoev,   &
-                                                  'J (',nt,') =', Hubbard_J(1,nt)*rytoev, &
-                                                  'E2(',nt,') =', Hubbard_J(2,nt)*rytoev, &
-                                                  'E3(',nt,') =', Hubbard_J(3,nt)*rytoev
-           ENDIF
-        ENDIF
-     ENDDO
-     !
-  ENDIF
-  ! 
   nsum = 0.d0
   rsrv = 0.d0
   !
@@ -247,31 +198,6 @@ SUBROUTINE write_ns_nc
   IF ( 2 * Hubbard_lmax + 1 > ldmx ) &
        CALL errore( 'write_ns', 'ldmx is too small', 1 )
   !
-  ! ... output of +U parameters
-  !
-  WRITE (stdout,*) 'LDA+U parameters:'
-  !
-  DO nt = 1, ntyp
-     IF (Hubbard_U(nt) /= 0.d0) THEN
-        IF (Hubbard_l(nt)==0) THEN
-           WRITE(stdout,'(a,i2,a,f12.8)') 'U(',nt,') =', Hubbard_U(nt) * rytoev
-        ELSEIF (Hubbard_l(nt)==1) THEN
-           WRITE(stdout,'(2(a,i3,a,f9.4,3x))') 'U(',nt,') =', Hubbard_U(nt)*rytoev, &
-                                               'J(',nt,') =', Hubbard_J(1,nt)*rytoev
-        ELSEIF (Hubbard_l(nt)==2) THEN
-           WRITE(stdout,'(3(a,i3,a,f9.4,3x))') 'U(',nt,') =', Hubbard_U(nt)*rytoev,   &
-                                               'J(',nt,') =', Hubbard_J(1,nt)*rytoev, &
-                                               'B(',nt,') =', Hubbard_J(2,nt)*rytoev
-        ELSEIF (Hubbard_l(nt)==3) THEN
-           WRITE(stdout,'(4(a,i3,a,f9.4,3x))') 'U (',nt,') =', Hubbard_U(nt)*rytoev,   &
-                                               'J (',nt,') =', Hubbard_J(1,nt)*rytoev, &
-                                               'E2(',nt,') =', Hubbard_J(2,nt)*rytoev, &
-                                               'E3(',nt,') =', Hubbard_J(3,nt)*rytoev
-        ENDIF
-     ENDIF
-  ENDDO
-  !
-  !
   nsum = 0.d0
   DO na = 1, nat
      nt = ityp (na)
@@ -396,16 +322,6 @@ SUBROUTINE write_nsg
   ELSE
      ALLOCATE (f(ldmax,ldmax),vet(ldmax,ldmax),lambda(ldmax))
   ENDIF
-  !
-  DO nt = 1, ntyp
-     IF (Hubbard_alpha(nt) /= 0.d0 .OR. Hubbard_alpha_back(nt) /= 0.d0 .OR. &
-         Hubbard_J0(nt) /= 0.d0) THEN
-        WRITE (stdout,*) 'DFT+U+V parameters:'
-        WRITE (stdout,'(a,i2,a,f12.8)') 'alpha(',nt,') =', Hubbard_alpha(nt)*rytoev
-        WRITE (stdout,'(a,i2,a,f12.8)') 'alpha_back(',nt,') =', Hubbard_alpha_back(nt)*rytoev
-        WRITE (stdout,'(a,i2,a,f12.8)') 'J0(',nt,') =', Hubbard_J0(nt)*rytoev
-     ENDIF
-  ENDDO
   !
   ! Calculation of occupations
   !

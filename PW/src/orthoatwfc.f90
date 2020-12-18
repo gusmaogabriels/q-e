@@ -13,7 +13,7 @@ SUBROUTINE orthoUwfc
   ! This routine saves to buffer "iunhub" atomic wavefunctions having an
   ! associated Hubbard U term * S, for DFT+U(+V) calculations. Same for 
   ! Atomic wavefunctions are orthogonalized if desired, depending upon 
-  ! the value of "U_projection". "swfcatom" must NOT be allocated on input.
+  ! the value of "Hubbard_manifold". "swfcatom" must NOT be allocated on input.
   !
   USE kinds,      ONLY : DP
   USE buffers,    ONLY : get_buffer, save_buffer
@@ -22,7 +22,7 @@ SUBROUTINE orthoUwfc
   USE ions_base,  ONLY : nat
   USE basis,      ONLY : natomwfc, swfcatom
   USE klist,      ONLY : nks, xk, ngk, igk_k
-  USE ldaU,       ONLY : U_projection, wfcU, nwfcU, copy_U_wfc
+  USE ldaU,       ONLY : Hubbard_manifold, wfcU, nwfcU, copy_U_wfc
   USE wvfct,      ONLY : npwx
   USE uspp,       ONLY : nkb, vkb
   USE becmod,     ONLY : allocate_bec_type, deallocate_bec_type, &
@@ -41,10 +41,10 @@ SUBROUTINE orthoUwfc
   LOGICAL :: orthogonalize_wfc, normalize_only, save_flag
   COMPLEX(DP) , ALLOCATABLE :: wfcatom (:,:)
 
-  IF ( U_projection == "pseudo" ) THEN
+  IF ( Hubbard_manifold == "pseudo" ) THEN
      WRITE( stdout,*) 'Beta functions used for LDA+U Projector'
      RETURN
-  ELSE IF (U_projection=="file") THEN
+  ELSE IF (Hubbard_manifold == "file") THEN
      !
      ! Read atomic wavefunctions from file (produced by pmw.x). In this case,
      ! U-specific atomic wavefunctions wfcU coincide with atomic wavefunctions 
@@ -54,25 +54,25 @@ SUBROUTINE orthoUwfc
         CALL get_buffer (wfcU, nwordwfcU, iunhub, ik)
      END DO
      RETURN
-  ELSE IF (U_projection=="atomic") THEN
+  ELSE IF (Hubbard_manifold == "atomic") THEN
      orthogonalize_wfc = .FALSE.
      normalize_only = .FALSE.
      WRITE( stdout,*) 'Atomic wfc used for LDA+U Projector are NOT orthogonalized'
-  ELSE IF (U_projection=="ortho-atomic") THEN
+  ELSE IF (Hubbard_manifold == "ortho-atomic") THEN
      orthogonalize_wfc = .TRUE.
      normalize_only = .FALSE.    
      WRITE( stdout,*) 'Atomic wfc used for LDA+U Projector are orthogonalized'
      IF (gamma_only) CALL errore('orthoUwfc', &
           'Gamma-only calculation for this case not implemented', 1 )
-  ELSE IF (U_projection=="norm-atomic") THEN
+  ELSE IF (Hubbard_manifold == "norm-atomic") THEN
      orthogonalize_wfc = .TRUE.
      normalize_only = .TRUE.
      WRITE( stdout,*) 'Atomic wfc used for LDA+U Projector are normalized but NOT orthogonalized'
      IF (gamma_only) CALL errore('orthoUwfc', &
           'Gamma-only calculation for this case not implemented', 1 )
   ELSE
-     WRITE( stdout,*) "U_projection_type =", U_projection
-     CALL errore ("orthoUwfc"," this U_projection_type is not valid",1)
+     WRITE( stdout,*) "Hubbard_manifold =", Hubbard_manifold
+     CALL errore ("orthoUwfc"," this Hubbard_manifold is not valid",1)
   END IF
 
   ALLOCATE ( wfcatom(npwx*npol, natomwfc), swfcatom(npwx*npol, natomwfc) )
@@ -132,7 +132,7 @@ SUBROUTINE orthoUwfc2 (ik)
   USE ions_base,        ONLY : nat
   USE basis,            ONLY : natomwfc, wfcatom, swfcatom
   USE klist,            ONLY : nks, xk, ngk, igk_k
-  USE ldaU,             ONLY : U_projection, wfcU, nwfcU, copy_U_wfc
+  USE ldaU,             ONLY : Hubbard_manifold, wfcU, nwfcU, copy_U_wfc
   USE wvfct,            ONLY : npwx
   USE uspp,             ONLY : nkb, vkb
   USE becmod,           ONLY : allocate_bec_type, deallocate_bec_type, &
@@ -149,23 +149,23 @@ SUBROUTINE orthoUwfc2 (ik)
   LOGICAL :: orthogonalize_wfc, normalize_only, save_flag
   COMPLEX(DP), ALLOCATABLE :: aux(:,:)
 
-  IF ( U_projection == "pseudo" ) THEN
-     CALL errore ("orthoUwfc2","U_projection=pseudo is not supported",1)
-  ELSE IF (U_projection=="file") THEN
-     CALL errore ("orthoUwfc2","U_projection=file is not supported",1)
-  ELSE IF (U_projection=="atomic") THEN
+  IF ( Hubbard_manifold == "pseudo" ) THEN
+     CALL errore ("orthoUwfc2","Hubbard_manifold=pseudo is not supported",1)
+  ELSE IF (Hubbard_manifold == "file") THEN
+     CALL errore ("orthoUwfc2","Hubbard_manifold=file is not supported",1)
+  ELSE IF (Hubbard_manifold == "atomic") THEN
      orthogonalize_wfc = .FALSE.
      normalize_only = .FALSE.
-  ELSE IF (U_projection=="ortho-atomic") THEN
+  ELSE IF (Hubbard_manifold == "ortho-atomic") THEN
      orthogonalize_wfc = .TRUE.
      normalize_only = .FALSE.    
      IF (gamma_only) CALL errore('orthoUwfc2', &
           'Gamma-only calculation for this case not implemented', 1 )
-  ELSE IF (U_projection=="norm-atomic") THEN
-     CALL errore ("orthoUwfc2","U_projection=norm-atomic is not supported",1)
+  ELSE IF (Hubbard_manifold == "norm-atomic") THEN
+     CALL errore ("orthoUwfc2","Hubbard_manifold=norm-atomic is not supported",1)
   ELSE
-     WRITE( stdout,*) "U_projection_type =", U_projection
-     CALL errore ("orthoUwfc2"," this U_projection_type is not valid",1)
+     WRITE( stdout,*) "Hubbard_manifold =", Hubbard_manifold
+     CALL errore ("orthoUwfc2"," this Hubbard_manifold is not valid",1)
   END IF
   !
   ! Compute atomic wfc at this k (phi)
@@ -175,7 +175,7 @@ SUBROUTINE orthoUwfc2 (ik)
      CALL atomic_wfc (ik, wfcatom)
   ENDIF
   !
-  IF (U_projection=="ortho-atomic") THEN
+  IF (Hubbard_manifold=="ortho-atomic") THEN
      ALLOCATE(aux(npwx,natomwfc))
      ! Copy atomic wfcs (phi)
      aux(:,:) = wfcatom(:,:)
@@ -203,7 +203,7 @@ SUBROUTINE orthoUwfc2 (ik)
   ! in wfcU (no ultrasoft S).
   CALL copy_U_wfc (wfcatom, noncolin)
   !
-  IF (U_projection=="ortho-atomic") THEN
+  IF (Hubbard_manifold=="ortho-atomic") THEN
      ! Copy atomic wfcs
      wfcatom(:,:) = aux(:,:)
      DEALLOCATE(aux)

@@ -19,7 +19,7 @@ SUBROUTINE stres_hub ( sigmah )
    USE cell_base,     ONLY : omega, at, bg
    USE wvfct,         ONLY : nbnd, npwx
    USE ldaU,          ONLY : Hubbard_lmax, Hubbard_l, is_hubbard, &
-                             lda_plus_u_kind, U_projection, is_hubbard_back, &
+                             lda_plus_u_kind, Hubbard_manifold, is_hubbard_back, &
                              ldim_back, ldmx_b, nsg, v_nsg, max_num_neighbors, &
                              ldim_u, Hubbard_V, at_sc, neighood, ldmx_tot, &
                              wfcU, nwfcU, copy_U_wfc
@@ -64,9 +64,9 @@ SUBROUTINE stres_hub ( sigmah )
    !
    save_flag = use_bgrp_in_hpsi ; use_bgrp_in_hpsi = .false.
    !
-   IF (.NOT.((U_projection.EQ."atomic") .OR. (U_projection.EQ."ortho-atomic"))) &
+   IF (.NOT.((Hubbard_manifold.EQ."atomic") .OR. (Hubbard_manifold.EQ."ortho-atomic"))) &
       CALL errore("force_hub", &
-                   " forces for this U_projection_type not implemented",1)
+                   " forces for this Hubbard_manifold not implemented",1)
    !
    IF (lda_plus_u_kind.EQ.1) CALL errore("stres_hub", &
                    " stress in non collinear LDA+U scheme is not yet implemented",1)
@@ -79,7 +79,7 @@ SUBROUTINE stres_hub ( sigmah )
    ALLOCATE (wfcatom(npwx,natomwfc))
    ALLOCATE (at_dy(npwx,natomwfc), at_dj(npwx,natomwfc))
    IF (okvan) ALLOCATE (us_dy(npwx,nkb), us_dj(npwx,nkb))
-   IF (U_projection.EQ."ortho-atomic") THEN
+   IF (Hubbard_manifold.EQ."ortho-atomic") THEN
       ALLOCATE (swfcatom(npwx,natomwfc))
       ALLOCATE (eigenval(natomwfc))
       ALLOCATE (eigenvect(natomwfc,natomwfc))
@@ -317,7 +317,7 @@ SUBROUTINE stres_hub ( sigmah )
    DEALLOCATE (wfcatom)
    DEALLOCATE (at_dy, at_dj)
    IF (okvan) DEALLOCATE (us_dy, us_dj)
-   IF (U_projection.EQ."ortho-atomic") THEN
+   IF (Hubbard_manifold.EQ."ortho-atomic") THEN
       DEALLOCATE (swfcatom)
       DEALLOCATE (eigenval)
       DEALLOCATE (eigenvect)
@@ -945,7 +945,7 @@ SUBROUTINE dprojdepsilon_k ( spsi, ik, ipol, jpol, nb_s, nb_e, mykey, dproj )
    USE ldaU,                 ONLY : nwfcU, wfcU, is_hubbard, is_hubbard_back,  &
                                     offsetU, offsetU_back, offsetU_back1,      &
                                     oatwfc, oatwfc_back, oatwfc_back1, ldim_u, &
-                                    U_projection, Hubbard_l, Hubbard_l_back,   &
+                                    Hubbard_manifold, Hubbard_l, Hubbard_l_back,   &
                                     backall
    USE lsda_mod,             ONLY : lsda, nspin, isk
    USE wvfct,                ONLY : nbnd, npwx, wg
@@ -1048,9 +1048,9 @@ SUBROUTINE dprojdepsilon_k ( spsi, ik, ipol, jpol, nb_s, nb_e, mykey, dproj )
                      offpm  = oatwfc_back1(na)  - ldim_std - 2*Hubbard_l_back(nt) - 1
                   ENDIF
                ENDIF
-               IF (U_projection.EQ."atomic") THEN
+               IF (Hubbard_manifold.EQ."atomic") THEN
                   dwfc(ig,offpmU+m1) = at_dy(ig,offpm+m1) * a1 + at_dj(ig,offpm+m1) * a2
-               ELSEIF (U_projection.EQ."ortho-atomic") THEN
+               ELSEIF (Hubbard_manifold.EQ."ortho-atomic") THEN
                   IF (m1>ldim_std) CALL errore("dprojdtau_k", &
                         " Stress with background and ortho-atomic is not supported",1)
                   DO m2 = 1, natomwfc
@@ -1070,7 +1070,7 @@ SUBROUTINE dprojdepsilon_k ( spsi, ik, ipol, jpol, nb_s, nb_e, mykey, dproj )
    ! 2. Contribution due to the derivative of (O^{-1/2})_JI which
    !    is multiplied by atomic wavefunctions (only for ortho-atomic case)
    !
-   IF (U_projection.EQ."ortho-atomic") THEN
+   IF (Hubbard_manifold.EQ."ortho-atomic") THEN
       !
       ! Compute the derivative dO_IJ/d\epsilon(ipol,jpol)
       !
@@ -1365,7 +1365,7 @@ SUBROUTINE dprojdepsilon_gamma ( spsi, ik, ipol, jpol, nb_s, nb_e, mykey, dproj 
    USE ldaU,                 ONLY : nwfcU, wfcU, is_hubbard, is_hubbard_back,  &
                                     offsetU, offsetU_back, offsetU_back1,      &
                                     oatwfc, oatwfc_back, oatwfc_back1, ldim_u, &
-                                    U_projection, Hubbard_l, Hubbard_l_back,   &
+                                    Hubbard_manifold, Hubbard_l, Hubbard_l_back,   &
                                     backall
    USE lsda_mod,             ONLY : lsda, nspin, isk
    USE wvfct,                ONLY : nbnd, npwx, wg
@@ -1420,7 +1420,7 @@ SUBROUTINE dprojdepsilon_gamma ( spsi, ik, ipol, jpol, nb_s, nb_e, mykey, dproj 
    !       qm1(npwx)
    !
    ! See the implementation in dprojdepsilon_k
-   IF (U_projection.EQ."ortho-atomic") CALL errore("dprojdtau_gamma", &
+   IF (Hubbard_manifold.EQ."ortho-atomic") CALL errore("dprojdtau_gamma", &
                     " Forces with gamma-only and ortho-atomic are not supported",1)
    !
    ! Number of plane waves at the k point with the index ik

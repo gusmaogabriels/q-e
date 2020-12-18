@@ -19,7 +19,7 @@ SUBROUTINE stress( sigma )
   USE ener,             ONLY : etxc, vtxc
   USE gvect,            ONLY : ngm, gstart, g, gg, gcutm
   USE fft_base,         ONLY : dfftp
-  USE ldaU,             ONLY : lda_plus_u, U_projection
+  USE ldaU,             ONLY : lda_plus_u, Hubbard_manifold
   USE lsda_mod,         ONLY : nspin
   USE scf,              ONLY : rho, rho_core, rhog_core
   USE control_flags,    ONLY : iverbosity, gamma_only, llondon, ldftd3, lxdm, ts_vdw
@@ -145,7 +145,7 @@ SUBROUTINE stress( sigma )
   !  (included by stres_knl if using beta as local projectors)
   !
   sigmah(:,:) = 0.d0
-  IF ( lda_plus_u .AND. U_projection /= 'pseudo' ) CALL stres_hub( sigmah )
+  IF ( lda_plus_u .AND. Hubbard_manifold /= 'pseudo' ) CALL stres_hub( sigmah )
   !
   !   Electric field contribution
   !

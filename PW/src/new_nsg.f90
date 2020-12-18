@@ -20,7 +20,7 @@ SUBROUTINE new_nsg()
   USE kinds,                ONLY : DP
   USE ions_base,            ONLY : nat, ityp, ntyp => nsp
   USE klist,                ONLY : nks, ngk
-  USE ldaU,                 ONLY : Hubbard_l, q_ae, U_projection, wfcU, nwfcU,     &
+  USE ldaU,                 ONLY : Hubbard_l, q_ae, Hubbard_manifold, wfcU, nwfcU,     &
                                    ldim_u, ll, neighood, at_sc, nsgnew, phase_fac, &
                                    max_num_neighbors, Hubbard_l_back, backall,     &
                                    offsetU, offsetU_back, offsetU_back1, is_hubbard_back
@@ -79,8 +79,8 @@ SUBROUTINE new_nsg()
      !
      ! make the projection
      !
-     IF ( U_projection == 'pseudo' ) THEN
-        CALL errore('new_nsg', 'U_projection = pseudo is not supported',1)
+     IF ( Hubbard_manifold == 'pseudo' ) THEN
+        CALL errore('new_nsg', 'Hubbard_manifold = pseudo is not supported',1)
         !CALL compute_pproj( ik, q_ae, proj )
      ELSE
         IF (nks > 1) CALL get_buffer (wfcU, nwordwfcU, iunhub, ik)

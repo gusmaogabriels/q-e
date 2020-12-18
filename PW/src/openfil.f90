@@ -18,7 +18,7 @@ SUBROUTINE openfil()
   USE basis,            ONLY : natomwfc
   USE wvfct,            ONLY : nbnd, npwx
   USE fixed_occ,        ONLY : one_atom_occupations
-  USE ldaU,             ONLY : lda_plus_U, U_projection, nwfcU
+  USE ldaU,             ONLY : lda_plus_U, Hubbard_manifold, nwfcU
   USE io_files,         ONLY : prefix, iunpun, iunsat, &
                                iunhub, nwordwfcU, nwordwfc, nwordatwfc, &
                                iunefield, iunefieldm, iunefieldp, seqopn
@@ -45,7 +45,7 @@ SUBROUTINE openfil()
   nwordatwfc= npwx*natomwfc*npol
   nwordwfcU = npwx*nwfcU*npol
   !
-  IF ( lda_plus_u .AND. (U_projection.NE.'pseudo') ) THEN
+  IF ( lda_plus_u .AND. (Hubbard_manifold.NE.'pseudo') ) THEN
      CALL open_buffer( iunhub,  'hub',  nwordwfcU, io_level, exst )
   ENDIF
   IF ( use_wannier .OR. one_atom_occupations ) &

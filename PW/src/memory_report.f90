@@ -42,7 +42,7 @@ SUBROUTINE memory_report()
   USE uspp,      ONLY : nkb, okvan
   USE atom,      ONLY : rgrid
   USE funct,     ONLY : dft_is_meta, dft_is_hybrid
-  USE ldaU,      ONLY : lda_plus_u, U_projection, nwfcU
+  USE ldaU,      ONLY : lda_plus_u, Hubbard_manifold, nwfcU
   USE fixed_occ, ONLY : one_atom_occupations
   USE wannier_new,ONLY: use_wannier
   USE lsda_mod,  ONLY : nspin
@@ -115,7 +115,7 @@ SUBROUTINE memory_report()
      ram = ram + add
   END IF
   ! Hubbard wavefunctions
-  IF ( lda_plus_u .AND. U_projection .NE. 'pseudo' ) THEN
+  IF ( lda_plus_u .AND. Hubbard_manifold .NE. 'pseudo' ) THEN
      add = complex_size * nwfcU * npol * npwx_l * nk ! also buffer 
      IF ( iverbosity > 0 ) WRITE( stdout, 1013 ) 'U proj.', add/nk/MB
      IF ( iverbosity > 0 ) WRITE( stdout, 1013 ) 'U proj. (w. buff.)', add/MB

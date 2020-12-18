@@ -8,7 +8,7 @@
 SUBROUTINE add_vhub_to_deeq( deeq )
 !-----------------------------------------------------------------
   !! Add Hubbard contributions to the integral of V_eff and Q_{nm} when 
-  !! U_projection is pseudo.
+  !! Hubbard manifold is pseudo.
   !
   USE kinds,         ONLY : DP
   USE ions_base,     ONLY : nat, ntyp => nsp, ityp
