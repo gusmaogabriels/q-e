@@ -18,6 +18,7 @@ MODULE ldaU
   USE basis,         ONLY : natomwfc
   USE ions_base,     ONLY : nat, ntyp => nsp, ityp
   USE control_flags, ONLY : dfpt_hub
+  USE io_global,     ONLY : stdout
   !
   SAVE
   !
@@ -58,6 +59,8 @@ MODULE ldaU
   !! 0 --> Simplified rotationally-invariant formulation of DFT+U
   !! 1 --> Full formulation of DFT+U
   !! 2 --> Simplified rotationally-invariant formulation of DFT+U+V
+  INTEGER :: Hubbard_n(ntypx)
+  !! the principal quantum number
   INTEGER :: Hubbard_l(ntypx)
   !! the angular momentum of Hubbard states
   INTEGER :: Hubbard_l_back(ntypx)
@@ -106,7 +109,7 @@ MODULE ldaU
   LOGICAL :: iso_sys
   !! .TRUE. if the system is isolated (the code diagonalizes
   !! and prints the full occupation matrix)
-  CHARACTER(len=30) :: U_projection
+  CHARACTER(len=30) :: Hubbard_manifold
   !! 'atomic', 'ortho-atomic', 'file'
   CHARACTER(len=80) :: Hubbard_parameters
   !! if 'input' then read Hubbard_V from input,
@@ -225,7 +228,7 @@ CONTAINS
     Hubbard_lmax = -1
     ! Set the default of Hubbard_l for the species which have
     ! Hubbard_U=0 (in that case set_Hubbard_l will not be called)
-    Hubbard_l(:) = -1
+    !Hubbard_l(:) = -1
     !
     ! Background part
     !
@@ -256,7 +259,7 @@ CONTAINS
                                 Hubbard_alpha_back(nt) /= 0.0_dp                 
           !
           IF ( is_hubbard(nt) ) THEN
-             Hubbard_l(nt) = set_Hubbard_l( psd(nt) )
+             !Hubbard_l(nt) = set_Hubbard_l( psd(nt) )
              Hubbard_lmax = MAX( Hubbard_lmax, Hubbard_l(nt) )
              ldmx = MAX( ldmx, 2*Hubbard_l(nt)+1 )
              ldim_u(nt) = 2*Hubbard_l(nt)+1
@@ -329,8 +332,8 @@ CONTAINS
        !
        ! DFT+U (full)
        ! 
-       IF ( U_projection == 'pseudo' ) CALL errore( 'init_lda_plus_u', &
-            & 'full DFT+U not implemented with pseudo projection type', 1 )
+       IF ( Hubbard_manifold == 'pseudo' ) CALL errore( 'init_lda_plus_u', &
+            & 'full DFT+U not implemented with pseudo Hubbard manifold', 1 )
        !
        IF (noncolin) THEN
           IF ( .NOT. ALLOCATED (d_spin_ldau) ) ALLOCATE( d_spin_ldau(2,2,48) )
@@ -638,6 +641,112 @@ CONTAINS
   RETURN
   !
   END SUBROUTINE copy_U_wfc
+  !
+  SUBROUTINE hub_summary()
+    !
+    USE spin_orb,     ONLY : lspinorb
+    !
+    IMPLICIT NONE
+    INTEGER :: nt
+    !
+    WRITE(stdout,'(5x,a)') 'Hubbard manifold: ' // TRIM(Hubbard_manifold)
+    IF (lda_plus_u_kind == 0) THEN
+       WRITE( stdout, '(5x,"Hubbard parameters of DFT+U (Dudarev formulation) in eV:")')
+       DO nt = 1, ntyp
+          IF (is_hubbard(nt)) THEN
+            CALL write_hub_param (nt, Hubbard_U(nt), 'U')
+            CALL write_hub_param (nt, Hubbard_J0(nt), 'J0')
+            CALL write_hub_param (nt, Hubbard_alpha(nt), 'alpha')
+            CALL write_hub_param (nt, Hubbard_beta(nt), 'beta')
+          ENDIF
+          IF (is_hubbard_back(nt)) THEN
+            CALL write_hub_param (nt, Hubbard_U_back(nt), 'U_back')
+            CALL write_hub_param (nt, Hubbard_alpha_back(nt), 'alpha_back')
+        ENDIF
+       ENDDO
+    ELSEIF (lda_plus_u_kind == 1) THEN
+       WRITE( stdout, '(5x,"Hubbard parameters of DFT+U (Liechtenstein formulation) in eV:")')
+       DO nt = 1, ntyp
+          IF (Hubbard_U(nt) /= 0.d0) THEN
+             IF (Hubbard_l(nt) == 0) THEN
+                CALL write_hub_param (nt, Hubbard_U(nt), 'U')
+             ELSEIF (Hubbard_l(nt) == 1) THEN
+                CALL write_hub_param (nt, Hubbard_U(nt), 'U')
+                CALL write_hub_param (nt, Hubbard_J(1,nt), 'J')
+             ELSEIF (Hubbard_l(nt) == 2) THEN
+                CALL write_hub_param (nt, Hubbard_U(nt), 'U')
+                CALL write_hub_param (nt, Hubbard_J(1,nt), 'J')
+                CALL write_hub_param (nt, Hubbard_J(2,nt), 'B')
+             ELSEIF (Hubbard_l(nt) == 3) THEN
+                CALL write_hub_param (nt, Hubbard_U(nt), 'U')
+                CALL write_hub_param (nt, Hubbard_J(1,nt), 'J')
+                CALL write_hub_param (nt, Hubbard_J(2,nt), 'E2')
+                CALL write_hub_param (nt, Hubbard_J(3,nt), 'E3')
+             ENDIF
+          ENDIF
+       ENDDO
+       IF (lspinorb) THEN
+           WRITE(stdout, '(5x,"DFT+U on averaged j=l+1/2,l-1/2 radial WFs")')
+       ENDIF
+    ELSEIF (lda_plus_u_kind == 2) THEN
+       WRITE( stdout, '(5x,"Hubbard parameters of DFT+U+V (Dudarev formulation) in eV:")')
+       ! Info about the Hubbard V is printed by the routine alloc_neighborhood
+       DO nt = 1, ntyp
+          IF (is_hubbard(nt)) THEN
+            CALL write_hub_param (nt, Hubbard_J0(nt), 'J0')
+            CALL write_hub_param (nt, Hubbard_alpha(nt), 'alpha')
+            CALL write_hub_param (nt, Hubbard_beta(nt), 'beta')
+          ENDIF
+          IF (is_hubbard_back(nt)) THEN
+            CALL write_hub_param (nt, Hubbard_alpha_back(nt), 'alpha_back')
+        ENDIF
+       ENDDO
+    ENDIF
+    !
+    RETURN
+    !
+  END SUBROUTINE hub_summary
+  !
+  SUBROUTINE write_hub_param (nt, hub_parameter, hub_name)
+    !
+    USE ions_base,        ONLY : atm
+    USE constants,        ONLY : rytoev 
+    !
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: nt
+    CHARACTER(len=*), INTENT(IN) :: hub_name
+    REAL(DP) :: hub_parameter
+    !
+    IF (hub_parameter /= 0.d0) &
+       WRITE(stdout,'(5x,a,i1,a,f8.4)')  &
+            hub_name // '(' // atm(nt) // ',', Hubbard_n(nt), &
+            l_spdf2(Hubbard_l(nt)) // ') =', hub_parameter*rytoev
+    RETURN
+    !
+  END SUBROUTINE write_hub_param
+  !
+  FUNCTION l_spdf2 (l) RESULT(res)
+    !
+    ! Convert the value of the orbital quantum number
+    ! into a character
+    !
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: l
+    CHARACTER(len=1) :: res
+    !
+    IF (l == 0) THEN
+       res = 's'
+    ELSEIF (l == 1) THEN
+       res = 'p'
+    ELSEIF (l == 2) THEN
+       res = 'd'
+    ELSEIF (l == 3) THEN
+       res = 'f'
+    ELSE
+       CALL errore( 'l_spdf2', 'Incorrect value of the orbital quantum number', l )
+    ENDIF
+    !
+  END FUNCTION l_spdf2
   !
 END MODULE ldaU
 !

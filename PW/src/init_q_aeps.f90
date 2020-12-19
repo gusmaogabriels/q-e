@@ -20,7 +20,7 @@ SUBROUTINE init_q_aeps()
    USE atom,          ONLY : rgrid, msh
    USE lsda_mod,      ONLY : nspin
    USE ldaU,          ONLY : q_ae, q_ps, Hubbard_l, &
-                             U_projection, is_hubbard, nwfcU, offsetU
+                             is_hubbard, nwfcU, offsetU
    USE uspp_param,    ONLY : nbetam, nh, nhm, upf
    USE uspp,          ONLY : indv, nhtol, nhtolm, nkb
    USE control_flags, ONLY : iverbosity
@@ -53,7 +53,7 @@ SUBROUTINE init_q_aeps()
       IF ( .NOT. is_hubbard(nt) ) CYCLE
       !
       IF ( .NOT.upf(nt)%has_wfc ) CALL errore( 'init_q_aeps', &
-           "All-electron atomic-wavefunctions needed for pseudo U_projection", 1 )
+           "All-electron atomic-wavefunctions needed for pseudo Hubbard manifold", 1 )
       !
       DO nb = 1, upf(nt)%nbeta
          DO mb = nb, upf(nt)%nbeta

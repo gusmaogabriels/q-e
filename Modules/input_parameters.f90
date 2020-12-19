@@ -401,6 +401,8 @@ MODULE input_parameters
         INTEGER :: l1back(nsx) = -1
         INTEGER, PARAMETER :: nspinx=2, lqmax=7
         REAL(DP) :: starting_ns_eigenvalue(lqmax,nspinx,nsx) = -1.0_DP
+        INTEGER  :: hubbard_l(nsx) = -1
+        INTEGER  :: hubbard_n(nsx) = -1
         REAL(DP) :: hubbard_u(nsx) = 0.0_DP
         REAL(DP) :: hubbard_u_back(nsx) = 0.0_DP
         REAL(DP) :: hubbard_v(natx,natx*(2*sc_size+1)**3,4) = 0.0_DP 
@@ -409,12 +411,13 @@ MODULE input_parameters
         REAL(DP) :: hubbard_alpha(nsx) = 0.0_DP
         REAL(DP) :: hubbard_alpha_back(nsx) = 0.0_DP
         REAL(DP) :: hubbard_beta(nsx) = 0.0_DP
-        CHARACTER(len=80) :: U_projection_type = 'atomic'
+        CHARACTER(len=80) :: Hubbard_manifold = 'atomic' !U_projection_type = 'atomic'
         CHARACTER(len=80) :: Hubbard_parameters = 'input'
         LOGICAL :: reserv(nsx) = .FALSE.
         LOGICAL :: reserv_back(nsx) = .FALSE.
         LOGICAL :: hub_pot_fix = .FALSE.
         LOGICAL :: backall(nsx) = .FALSE.
+        INTEGER :: nhub = 0 ! Number of Hubbard parameters specified in the HUBBARD card / input
 
         LOGICAL :: la2F = .false.
           ! For electron-phonon calculations
@@ -629,12 +632,12 @@ MODULE input_parameters
              force_symmorphic, starting_charge, starting_magnetization,       &
              occupations, degauss, nspin, ecfixed,                            &
              qcutz, q2sigma, lda_plus_U, lda_plus_u_kind,                     &
-             Hubbard_U, Hubbard_U_back, Hubbard_J, Hubbard_alpha,             &
-             Hubbard_alpha_back, Hubbard_J0, Hubbard_beta,                    &
-             hub_pot_fix, Hubbard_V, Hubbard_parameters,                      &
+             !Hubbard_U, Hubbard_J, Hubbard_J0, Hubbard_V, 
+             Hubbard_U_back, Hubbard_alpha, Hubbard_alpha_back, Hubbard_beta, &
+             hub_pot_fix, Hubbard_parameters, nhub,                           &
              backall, lback, l1back, reserv, reserv_back,                     &
              edir, emaxpos, eopreg, eamp, smearing, starting_ns_eigenvalue,   &
-             U_projection_type, input_dft, la2F, assume_isolated,             &
+             input_dft, la2F, assume_isolated,                                &
              nqx1, nqx2, nqx3, ecutfock, localization_thr, scdm, ace,         &
              scdmden, scdmgrd, nscdm, n_proj,                                 &
              exxdiv_treatment, x_gamma_extrapolation, yukawa, ecutvcut,       &
@@ -1523,6 +1526,10 @@ MODULE input_parameters
 !
       TYPE (wannier_data) :: wan_data(nwanx,2)
 
+!
+!   HUBBARD
+!
+      LOGICAL  :: tahub = .false. 
 
 !  END manual
 ! ----------------------------------------------------------------------

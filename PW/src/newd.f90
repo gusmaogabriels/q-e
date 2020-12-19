@@ -207,7 +207,7 @@ SUBROUTINE newd( )
   USE scf,                  ONLY : v
   USE realus,               ONLY : newq_r
   USE control_flags,        ONLY : tqr
-  USE ldaU,                 ONLY : lda_plus_U, U_projection
+  USE ldaU,                 ONLY : lda_plus_U, Hubbard_manifold
   !
   IMPLICIT NONE
   !
@@ -300,7 +300,7 @@ SUBROUTINE newd( )
   !
   IF (.NOT.noncolin) CALL add_paw_to_deeq( deeq )
   !
-  IF (lda_plus_U .AND. (U_projection == 'pseudo')) CALL add_vhub_to_deeq( deeq )
+  IF (lda_plus_U .AND. (Hubbard_manifold == 'pseudo')) CALL add_vhub_to_deeq( deeq )
   !
   CALL stop_clock( 'newd' )
   !

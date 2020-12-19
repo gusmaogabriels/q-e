@@ -24,7 +24,7 @@ SUBROUTINE new_ns( ns )
   USE ions_base,            ONLY : nat, ityp
   USE klist,                ONLY : nks, ngk
   USE ldaU,                 ONLY : ldmx, Hubbard_l, q_ae, wfcU, &
-                                   U_projection, is_hubbard, nwfcU, offsetU
+                                   Hubbard_manifold, is_hubbard, nwfcU, offsetU
   USE symm_base,            ONLY : d1, d2, d3
   USE lsda_mod,             ONLY : lsda, current_spin, nspin, isk
   USE symm_base,            ONLY : nsym, irt
@@ -78,7 +78,7 @@ SUBROUTINE new_ns( ns )
      !
      ! make the projection
      !
-     IF ( U_projection == 'pseudo' ) THEN
+     IF ( Hubbard_manifold == 'pseudo' ) THEN
         CALL compute_pproj( ik, q_ae, proj )
      ELSE
         IF (nks > 1) CALL get_buffer( wfcU, nwordwfcU, iunhub, ik )

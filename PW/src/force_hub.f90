@@ -20,7 +20,7 @@ SUBROUTINE force_hub( forceh )
    USE kinds,                ONLY : DP
    USE ions_base,            ONLY : nat, ntyp => nsp, ityp
    USE cell_base,            ONLY : at, bg
-   USE ldaU,                 ONLY : hubbard_lmax, hubbard_l, U_projection, &
+   USE ldaU,                 ONLY : hubbard_lmax, hubbard_l, Hubbard_manifold, &
                                     nwfcU, wfcU, is_hubbard, lda_plus_u_kind, &
                                     copy_U_wfc, offsetU, is_hubbard_back, &
                                     ldim_back, ldmx_b, ldmx_tot, ll, Hubbard_l_back, &
@@ -71,9 +71,9 @@ SUBROUTINE force_hub( forceh )
    !
    save_flag = use_bgrp_in_hpsi ; use_bgrp_in_hpsi = .false.
    !
-   IF (.NOT.((U_projection.EQ."atomic") .OR. (U_projection.EQ."ortho-atomic"))) &
+   IF (.NOT.((Hubbard_manifold.EQ."atomic") .OR. (Hubbard_manifold.EQ."ortho-atomic"))) &
       CALL errore("force_hub", &
-                   " forces for this U_projection_type not implemented",1)
+                   " forces for this Hubbard_manifold not implemented",1)
    !
    IF (lda_plus_u_kind == 1) CALL errore("force_hub", &
                    " forces in full LDA+U scheme are not yet implemented", 1 )
@@ -100,7 +100,7 @@ SUBROUTINE force_hub( forceh )
    !
    ALLOCATE (spsi(npwx,nbnd)) 
    ALLOCATE (wfcatom(npwx,natomwfc))
-   IF (U_projection.EQ."ortho-atomic") THEN
+   IF (Hubbard_manifold.EQ."ortho-atomic") THEN
       ALLOCATE (swfcatom(npwx,natomwfc))
       ALLOCATE (eigenval(natomwfc))
       ALLOCATE (eigenvect(natomwfc,natomwfc)) 
@@ -261,7 +261,7 @@ SUBROUTINE force_hub( forceh )
    !
    DEALLOCATE (spsi) 
    DEALLOCATE (wfcatom)
-   IF (U_projection.EQ."ortho-atomic") THEN
+   IF (Hubbard_manifold.EQ."ortho-atomic") THEN
       DEALLOCATE (swfcatom) 
       DEALLOCATE (eigenval)
       DEALLOCATE (eigenvect)
@@ -301,7 +301,7 @@ SUBROUTINE dndtau_k ( ldim, proj, spsi, alpha, jkb0, ipol, ik, nb_s, &
    USE ldaU,                 ONLY : is_hubbard, Hubbard_l, nwfcU, offsetU, &
                                     is_hubbard_back, offsetU_back, ldim_u, &
                                     offsetU_back1, ldim_back, Hubbard_l_back, &
-                                    backall, U_projection, wfcU
+                                    backall, Hubbard_manifold, wfcU
    USE wvfct,                ONLY : nbnd, npwx, wg
    USE mp_pools,             ONLY : intra_pool_comm, me_pool, nproc_pool
    USE mp,                   ONLY : mp_sum
@@ -366,7 +366,7 @@ SUBROUTINE dndtau_k ( ldim, proj, spsi, alpha, jkb0, ipol, ik, nb_s, &
    !
    ! In the 'ortho-atomic' case calculate d[(O^{-1/2})^T]
    !
-   IF (U_projection.EQ."ortho-atomic") THEN
+   IF (Hubbard_manifold.EQ."ortho-atomic") THEN
       ALLOCATE ( doverlap_inv(natomwfc,natomwfc) )
       CALL calc_doverlap_inv (alpha, ipol, ik, jkb0)
    ENDIF
@@ -626,7 +626,7 @@ SUBROUTINE dngdtau_k ( ldim, proj, spsi, alpha, jkb0, ipol, ik, nb_s, &
    USE ldaU,                 ONLY : is_hubbard, Hubbard_l, nwfcU, offsetU, at_sc,  &
                                     offsetU_back, offsetU_back1, Hubbard_l_back,   &
                                     backall, max_num_neighbors, phase_fac, ldim_u, &
-                                    neighood, U_projection, wfcU
+                                    neighood, Hubbard_manifold, wfcU
    USE wvfct,                ONLY : nbnd, npwx, npw, wg
    USE mp_pools,             ONLY : intra_pool_comm, me_pool, nproc_pool
    USE mp,                   ONLY : mp_sum
@@ -694,12 +694,12 @@ SUBROUTINE dngdtau_k ( ldim, proj, spsi, alpha, jkb0, ipol, ik, nb_s, &
                         nwfcU, wfcU, nbnd, evc, dproj_us, nb_s, nb_e, mykey)
    ENDIF
    !
-   IF (U_projection.EQ."atomic") THEN
+   IF (Hubbard_manifold.EQ."atomic") THEN
       ! In the 'atomic' case the calculation must be performed only once (when na=alpha)
       CALL dprojdtau_k ( spsi, alpha, alpha, jkb0, ipol, ik, nb_s, nb_e, mykey, dproj1 )
       IF (okvan) dproj1 = dproj1 + dproj_us
       dproj2 = dproj1
-   ELSEIF (U_projection.EQ."ortho-atomic") THEN
+   ELSEIF (Hubbard_manifold.EQ."ortho-atomic") THEN
       ! In the 'ortho-atomic' case calculate d[(O^{-1/2})^T]
       ALLOCATE ( doverlap_inv(natomwfc,natomwfc) )
       CALL calc_doverlap_inv (alpha, ipol, ik, jkb0)
@@ -714,7 +714,7 @@ SUBROUTINE dngdtau_k ( ldim, proj, spsi, alpha, jkb0, ipol, ik, nb_s, &
       IF ( is_hubbard(nt1) ) THEN
          ! Compute the second contribution to dproj1 due to the derivative of 
          ! ortho-atomic orbitals
-         IF (U_projection.EQ."ortho-atomic") THEN
+         IF (Hubbard_manifold.EQ."ortho-atomic") THEN
             CALL dprojdtau_k ( spsi, alpha, na1, jkb0, ipol, ik, nb_s, nb_e, mykey, dproj1 )
             IF (okvan) dproj1 = dproj1 + dproj_us
          ENDIF
@@ -726,7 +726,7 @@ SUBROUTINE dngdtau_k ( ldim, proj, spsi, alpha, jkb0, ipol, ik, nb_s, &
             ldim2 = ldim_u(nt2)
             ! Compute the second contribution to dproj2 due to the derivative of 
             ! ortho-atomic orbitals
-            IF (U_projection.EQ."ortho-atomic") THEN
+            IF (Hubbard_manifold.EQ."ortho-atomic") THEN
                CALL dprojdtau_k ( spsi, alpha, eq_na2, jkb0, ipol, ik, nb_s, nb_e, mykey, dproj2 )
                IF (okvan) dproj2 = dproj2 + dproj_us
             ENDIF
@@ -1004,7 +1004,7 @@ SUBROUTINE dprojdtau_k( spsi, alpha, na, ijkb0, ipol, ik, nb_s, nb_e, mykey, dpr
    USE ldaU,                 ONLY : is_hubbard, Hubbard_l, nwfcU, wfcU, offsetU, &
                                     is_hubbard_back, Hubbard_l_back, offsetU_back, &
                                     offsetU_back1, ldim_u, backall, lda_plus_u_kind, &
-                                    U_projection, oatwfc
+                                    Hubbard_manifold, oatwfc
    USE wvfct,                ONLY : nbnd, npwx, wg
    USE uspp,                 ONLY : nkb, vkb, okvan
    USE uspp_param,           ONLY : nh
@@ -1061,7 +1061,7 @@ SUBROUTINE dprojdtau_k( spsi, alpha, na, ijkb0, ipol, ik, nb_s, nb_e, mykey, dpr
    !
    dproj(:,:) = (0.0d0, 0.0d0)
    !
-   IF ((U_projection.EQ."atomic") .AND. (na==alpha) .AND. &
+   IF ((Hubbard_manifold.EQ."atomic") .AND. (na==alpha) .AND. &
        (is_hubbard(nt).OR.is_hubbard_back(nt))) THEN
       !
       !!!!!!!!!!!!!!!!!!!! ATOMIC CASE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1129,7 +1129,7 @@ SUBROUTINE dprojdtau_k( spsi, alpha, na, ijkb0, ipol, ik, nb_s, nb_e, mykey, dpr
       ENDIF
       DEALLOCATE ( dproj0 )
       !
-   ELSEIF (U_projection.EQ."ortho-atomic") THEN
+   ELSEIF (Hubbard_manifold.EQ."ortho-atomic") THEN
       !
       !!!!!!!!!!!!!!!!! ORTHO-ATOMIC CASE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       !
@@ -1280,7 +1280,7 @@ SUBROUTINE calc_doverlap_inv (alpha, ipol, ik, ijkb0)
    USE force_mod,      ONLY : eigenval, eigenvect, overlap_inv, doverlap_inv
    USE mp_bands,       ONLY : intra_bgrp_comm
    USE mp,             ONLY : mp_sum
-   USE ldaU,           ONLY : U_projection
+   USE ldaU,           ONLY : Hubbard_manifold
    !
    IMPLICIT NONE
    !
@@ -1300,7 +1300,7 @@ SUBROUTINE calc_doverlap_inv (alpha, ipol, ik, ijkb0)
    !
    CALL start_clock( 'calc_doverlap_inv' )
    !
-   IF (U_projection.NE."ortho-atomic") RETURN
+   IF (Hubbard_manifold.NE."ortho-atomic") RETURN
    !
    ALLOCATE (doverlap(natomwfc,natomwfc))
    doverlap(:,:) = (0.0d0, 0.0d0)
@@ -1513,7 +1513,7 @@ SUBROUTINE dprojdtau_gamma( spsi, alpha, ijkb0, ipol, ik, nb_s, nb_e, &
    USE ldaU,                 ONLY : is_hubbard, Hubbard_l, nwfcU, wfcU, offsetU, &
                                     is_hubbard_back, Hubbard_l_back, offsetU_back, &
                                     offsetU_back, offsetU_back1, ldim_u, backall, &
-                                    U_projection 
+                                    Hubbard_manifold
    USE wvfct,                ONLY : nbnd, npwx,  wg
    USE uspp,                 ONLY : nkb, vkb, qq_at
    USE uspp_param,           ONLY : nh
@@ -1564,7 +1564,7 @@ SUBROUTINE dprojdtau_gamma( spsi, alpha, ijkb0, ipol, ik, nb_s, nb_e, &
    !      wfatdbeta(nwfcU,nhm)   ! <wfcU|dbeta>
    !
    ! See the implementation in dprojdtau_k
-   IF (U_projection.EQ."ortho-atomic") CALL errore("dprojdtau_gamma", &
+   IF (Hubbard_manifold.EQ."ortho-atomic") CALL errore("dprojdtau_gamma", &
                     " Forces with gamma-only and ortho-atomic are not supported",1)
    !
    CALL start_clock( 'dprojdtau' )

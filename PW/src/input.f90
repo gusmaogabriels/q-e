@@ -106,13 +106,16 @@ SUBROUTINE iosys()
   USE ldaU,          ONLY : Hubbard_U_     => hubbard_u, &
                             Hubbard_J0_ => hubbard_j0, &
                             Hubbard_J_ => hubbard_j, &
+                            Hubbard_l_ => hubbard_l, &
+                            Hubbard_n_ => hubbard_n, &
+                            Hubbard_manifold_ => hubbard_manifold, &
                             Hubbard_alpha_ => hubbard_alpha, &
                             Hubbard_beta_ => hubbard_beta, &
                             lda_plus_u_    => lda_plus_u, &
                             lda_plus_u_kind_    => lda_plus_u_kind, &
                             Hubbard_parameters_ => Hubbard_parameters, &
                             iso_sys_    => iso_sys, &
-                            niter_with_fixed_ns, starting_ns, U_projection, &
+                            niter_with_fixed_ns, starting_ns, &
                             Hubbard_U_back_ => hubbard_u_back, &
                             Hubbard_alpha_back_ => hubbard_alpha_back, &
                             Hubbard_V_ => hubbard_v , &
@@ -243,13 +246,13 @@ SUBROUTINE iosys()
                                starting_charge, starting_magnetization,     &
                                occupations, degauss, smearing, nspin,       &
                                ecfixed, qcutz, q2sigma, lda_plus_U,         &
-                               lda_plus_U_kind, Hubbard_U, Hubbard_J,       &
-                               Hubbard_J0, Hubbard_beta,                    &
+                               lda_plus_U_kind, Hubbard_beta,               &
                                Hubbard_alpha, Hubbard_parameters,           &
                                Hubbard_U_back, Hubbard_alpha_back,          &
-                               Hubbard_V, hub_pot_fix, reserv, reserv_back, &
+                               Hubbard_manifold,                            &
+                               hub_pot_fix, reserv, reserv_back, &
                                backall, lback, l1back, input_dft, la2F,     &
-                               starting_ns_eigenvalue, U_projection_type,   &
+                               starting_ns_eigenvalue,                      &
                                x_gamma_extrapolation, nqx1, nqx2, nqx3,     &
                                exxdiv_treatment, yukawa, ecutvcut,          &
                                exx_fraction, screening_parameter, ecutfock, &
@@ -311,6 +314,9 @@ SUBROUTINE iosys()
                                     f_inp
   USE input_parameters,      ONLY : deallocate_input_parameters
   !
+  ! Hubbard
+  USE input_parameters,      ONLY : Hubbard_U, Hubbard_J, Hubbard_J0, Hubbard_V, &
+                                    Hubbard_l, Hubbard_n
   USE constraints_module,    ONLY : init_constraint
   USE read_namelists_module, ONLY : read_namelists, sm_not_set
   USE london_module,         ONLY : init_london, lon_rcut, scal6, in_c6, in_rvdw
@@ -1243,10 +1249,12 @@ SUBROUTINE iosys()
   Hubbard_J0_(1:ntyp)         = hubbard_j0(1:ntyp) / rytoev
   Hubbard_V_(:,:,:)           = hubbard_V(:,:,:) / rytoev
   Hubbard_U_back_(:)          = hubbard_U_back(:) / rytoev
+  Hubbard_l_(1:ntyp)          = hubbard_l(1:ntyp)
+  Hubbard_n_(1:ntyp)          = hubbard_n(1:ntyp)
+  Hubbard_manifold_           = hubbard_manifold 
   Hubbard_alpha_(1:ntyp)      = hubbard_alpha(1:ntyp) / rytoev
   Hubbard_beta_(1:ntyp)       = hubbard_beta(1:ntyp) / rytoev
   Hubbard_alpha_back_(1:ntyp) = hubbard_alpha_back(1:ntyp) / rytoev
-  U_projection                = U_projection_type
   starting_ns                 = starting_ns_eigenvalue
   backall_(1:ntyp)            = backall(1:ntyp)
   lback_(1:ntyp)              = lback(1:ntyp)

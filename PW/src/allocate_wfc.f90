@@ -17,7 +17,7 @@ SUBROUTINE allocate_wfc()
   USE wvfct,               ONLY : npwx, nbnd
   USE basis,               ONLY : natomwfc, swfcatom
   USE fixed_occ,           ONLY : one_atom_occupations
-  USE ldaU,                ONLY : wfcU, nwfcU, lda_plus_u, U_projection
+  USE ldaU,                ONLY : wfcU, nwfcU, lda_plus_u, Hubbard_manifold
   USE noncollin_module,    ONLY : npol
   USE wavefunctions,       ONLY : evc
   USE wannier_new,         ONLY : use_wannier
@@ -28,7 +28,7 @@ SUBROUTINE allocate_wfc()
   ALLOCATE( evc(npwx*npol,nbnd) )
   IF ( one_atom_occupations .OR. use_wannier ) &
      ALLOCATE( swfcatom(npwx*npol,natomwfc) )
-  IF ( lda_plus_u .AND. (U_projection.NE.'pseudo') ) &
+  IF ( lda_plus_u .AND. (Hubbard_manifold.NE.'pseudo') ) &
        ALLOCATE( wfcU(npwx*npol,nwfcU) )
   !
   RETURN

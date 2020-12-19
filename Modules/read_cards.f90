@@ -1944,22 +1944,16 @@ CONTAINS
    !    BEGIN manual
    !----------------------------------------------------------------------
    !
-   !
-   ! TEMPLATE
-   !
-   !      This is a template card info section
+   !  Needed to read Hubbard parameters
    !
    ! Syntax:
    !
-   !    TEMPLATE
-   !     RVALUE IVALUE
-   !
-   ! Example:
-   !
-   !    ???
+   !    U(Fe,3d) = 5.0
    !
    ! Where:
    !
+   !   'Fe' is the atomic type, '3d' is the Hubbard manifold, and
+   !   '5.0' is the value of the Hubbard U parameter
    !
    !----------------------------------------------------------------------
    !    END manual
@@ -1971,23 +1965,274 @@ CONTAINS
       !
       CHARACTER(len=256) :: input_line
       CHARACTER(len=256) :: aux
-      LOGICAL :: t_card_hubbard = .false.
-      ! To avoid two occurencies of HUBBARD
+      LOGICAL, EXTERNAL  :: imatches
+      LOGICAL            :: tend
       !
-      IF ( t_card_hubbard ) THEN
-         CALL errore( ' card_hubbard  ', ' two occurrences', 2 )
+      ! Internal variables
+      CHARACTER(len=20) :: string, str
+      INTEGER :: i, nt, hu_nt
+      LOGICAL :: is_u, is_j0, is_v, is_j
+      CHARACTER(len=:), ALLOCATABLE :: hu_param, hu_wfc, hu_at, hu_at2, &
+                                       hu_wfc2, hu_index, hu_val
+      !
+      ! Output variables
+      REAL(DP) :: hu_u,  &   ! Hubbard U (on-site)
+                  hu_j,  &   ! Hund's J  (on-site)
+                  hu_j0, &   ! Hund's J0 (on-site)
+                  hu_v       ! Hubbard V (inter-site)
+      INTEGER  :: hu_l,   &  ! orbitals quantum number
+                  hu_n,   &  ! principal quantum number
+                  hu_l1,  &  ! orbitals quantum number
+                  hu_n1,  &  ! principal quantum number
+                  hu_i       ! Hubbard index
+      CHARACTER(len=80) :: errmsg ! error message
+      !
+      IF ( tahub ) THEN
+         CALL errore( 'card_hubbard', 'two occurrences', 2 )
       ENDIF
-      t_card_hubbard = .true.
+      IF ( .not. taspc ) THEN
+         CALL errore( 'card_hubbard', 'ATOMIC_SPECIES must be present before', 2 )
+      ENDIF
       !
-      READ(input_line,*) aux, U_projection_type
-      IF(aux/='HUBBARD') CALL errore('card_hubbard', 'something wrong', 1)
+      ! Read the type of the Hubbard manifold
+      IF ( imatches( "ORTHO-ATOMIC", input_line ) ) THEN
+         Hubbard_manifold = 'ortho-atomic'
+      ELSEIF ( imatches( "NORM-ATOMIC", input_line ) ) THEN
+         Hubbard_manifold = 'norm-atomic'
+      ELSEIF ( imatches( "ATOMIC", input_line ) ) THEN
+         Hubbard_manifold = 'atomic'
+      ELSEIF ( imatches( "WANNIER", input_line ) ) THEN ! Change FILE to WANNIER everywhere 
+         Hubbard_manifold = 'wannier'
+      ELSEIF ( imatches( "PSEUDO", input_line ) ) THEN
+         Hubbard_manifold = 'pseudo'
+      ELSE
+         IF ( trim( adjustl( input_line ) ) /= 'HUBBARD' ) THEN
+            ! IT: I do not understand this check - it seems the error message is wrong
+            CALL errore( 'card_hubbard', &
+                        & 'unknown option for HUBBARD: '&
+                        & // input_line, 1 )
+         ELSE
+           CALL errore( 'card_hubbard', &
+                        & 'No Hubbard manifold specified in the HUBBARD card: ',1)
+         ENDIF
+      ENDIF
       !
-      ! Insert sanity check on U_projection, then start reading line by line     
+      Hubbard_manifold = TRIM(ADJUSTL(Hubbard_manifold))
       !
-      ! ... (to be written) 
+      ! Read Hubbard parameters, principal and orbital quantum number
+      !
+      DO i = 1, nhub
+         !
+         ! Initialize different parameters
+         hu_l=-1; hu_n=-1; hu_l1=-1; hu_n1=-1; hu_i=-1
+         hu_u=0.0; hu_j=0.0; hu_j0=0.0; hu_v=0.0
+         errmsg = ''
+         !
+         ! Read the i-th input line
+         CALL read_line( input_line, end_of_file = tend )
+         IF ( tend ) CALL errore( 'card_hubbard', &
+                           'End of file reading the HUBBARD card', i )
+         !
+         ! Read the Hubbard parameter name (e.g. U, J0, J, V)
+         hu_param = between( input_line, '', '(' )
+         IF ( LEN_TRIM(hu_param) < 1 .or. LEN_TRIM(hu_param) > 2) &
+           CALL errore( 'card_hubbard', &
+                      'Hubbard parameter name missing or too long', i )
+         !
+         is_u  = ( hu_param == 'u' .OR. hu_param == 'U' )
+         is_j0 = ( hu_param == 'j0'.OR. hu_param == 'J0')
+         is_j  = ( hu_param == 'j' .OR. hu_param == 'J' )
+         is_v  = ( hu_param == 'v' .OR. hu_param == 'V' )
+         !
+         ! Read the Hubbard atom name (e.g. Fe, Co, Ni, ...)
+         hu_at = between( input_line, '(', ',' )
+         IF ( LEN_TRIM(ADJUSTL(hu_at)) < 1 .OR. LEN_TRIM(ADJUSTL(hu_at)) > 3 ) &
+            CALL errore( 'card_hubbard', &
+                      'Hubbard atom name missing or wrong or too long', i )
+         !
+         ! Read the Hubbard manifold of U or J0 (e.g. 3d, 2p, 4f, ...) 
+         IF ( is_u .OR. is_j0 ) THEN
+            hu_wfc = between( input_line, ',', ')' )
+         ELSE
+            hu_wfc = between( input_line, ',', ',' )
+         ENDIF
+         IF ( LEN_TRIM(hu_wfc) /= 2 ) &
+            CALL errore( 'card_hubbard', &
+                      'Hubbard manifold name missing or wrong or too long', i )
+         !
+         ! Determine the principal and orbital quantum numbers 
+         ! of the Hubbard manifold
+         READ (hu_wfc(1:1),'(i1)', END=14, ERR=15) hu_n
+         hu_l = l_spdf( hu_wfc(2:2) )
+         IF ( hu_l == -1 ) CALL errore( 'card_hubbard', 'Hubbard l wrong', i)
+         !
+         IF ( is_j ) THEN
+            ! Check the index of J
+            hu_index = between( input_line, ',', ')',2 )
+         ELSEIF ( is_v ) THEN
+            ! Here is the case of V: we determine the same info as above
+            ! but for the second atom (i.e. the neighbor), e.g. V(.,.,O,2p,index)
+            hu_at2 = between( input_line, ',', ',',2 )
+            IF ( LEN_TRIM(ADJUSTL(hu_at2)) < 1 .OR. LEN_TRIM(ADJUSTL(hu_at2)) > 3 ) &
+               CALL errore( 'card_hubbard', &
+                      'Hubbard V: 2nd atom name missing or wrong or too long', i )
+            !
+            hu_wfc2 = between( input_line, ',', ',',3 )
+            IF ( len_trim(hu_wfc2) /= 2 ) &
+               CALL errore( 'card_hubbard', &
+                      'Hubbard V: manifold of the 2nd name missing or wrong or too long', i )
+            ! 
+            ! Read the index
+            hu_index = between( input_line, ',', ')',4 )
+            !
+            ! Determine the principal and orbital quantum numbers 
+            ! of the 2nd Hubbard manifold (i.e. of the neighbor atom)
+            READ(hu_wfc2(1:1),'(i1)', END=14, ERR=15) hu_n1
+            hu_l1 = l_spdf( hu_wfc2(2:2) )
+            IF ( hu_l1 == -1 ) CALL errore( 'card_hubbard', 'Hubbard l wrong (2nd atom)', i)
+            !
+         ENDIF
+         !
+         ! Determine the index
+         IF ( is_j ) THEN
+            IF ( LEN_TRIM(hu_index) /= 1 ) &
+               CALL errore( 'card_hubbard', 'Hubbard index wrong or missing', i)
+            READ(hu_index,'(i1)', END=14, ERR=15) hu_i
+            IF ( hu_i < 0 .or. hu_i > 3 ) &
+               CALL errore( 'card_hubbard', 'Not allowed value of the Hubbard index', i)
+         ELSEIF (is_v) THEN
+           IF ( LEN_TRIM(hu_index) > 2 ) &
+               CALL errore( 'card_hubbard', 'Hubbard index is too large', i)
+            READ(hu_index,'(i1)', END=14, ERR=15) hu_i
+            IF ( hu_i < 0 ) &
+               CALL errore( 'card_hubbard', 'Not allowed value of the Hubbard index', i)
+         ENDIF
+         !
+         ! Read the value of the Hubbard parameter
+         hu_val = between( input_line, '=', '' )
+         IF ( LEN_TRIM(hu_val) < 1 ) &
+            CALL errore( 'card_hubbard', &
+                      'Value for the Hubbard parameter is missing', i )
+         IF ( is_u ) THEN
+            READ(hu_val,*, END=14, ERR=15) hu_u
+         ELSEIF ( is_j0 ) THEN
+            READ(hu_val,*, END=14, ERR=15) hu_j0
+         ELSEIF ( is_j ) THEN
+            READ(hu_val,*, END=14, ERR=15) hu_j
+         ELSEIF ( is_v ) THEN
+            READ(hu_val,*, END=14, ERR=15) hu_v
+         ELSE
+            CALL errore( 'card_hubbard', &
+                      'Incorrect name of the Hubbard parameter', i )
+         ENDIF
+         !
+         ! Determine the index of the atomic type of the current Hubbard atom
+         hu_nt = -1
+         DO nt = 1, ntyp
+            IF (TRIM(ADJUSTL(hu_at)) == atom_label(nt)) THEN
+               hu_nt = nt
+               GO TO 13
+            ENDIF
+         ENDDO 
+         IF (hu_nt == -1) CALL errore( 'card_hubbard', &
+                'Name of the Hubbard atom does not match with any type in ATOMIC_SPECIES', i )
+13       CONTINUE         
+         !
+         ! Assign what has been read so far to the corresponding Hubbard arrays
+         !
+         IF (is_u) THEN
+            Hubbard_U(hu_nt) = hu_u
+            Hubbard_l(hu_nt) = hu_l
+            Hubbard_n(hu_nt) = hu_n
+         ELSEIF (is_j0) THEN
+            Hubbard_J0(hu_nt) = hu_j0
+            Hubbard_l(hu_nt)  = hu_l
+            Hubbard_n(hu_nt)  = hu_n
+         ELSEIF (is_j) THEN
+            Hubbard_J(hu_i,hu_nt) = hu_j
+            Hubbard_l(hu_nt)  = hu_l
+            Hubbard_n(hu_nt)  = hu_n
+         ELSEIF (is_v) THEN
+            ! Problem: 1st and 2nd indices must be atomic positions,
+            ! and not atomic types. In any case, let's leave this for later.
+            !Hubbard_V(hu_at,hu_at2,hu_i) = hu_v
+            Hubbard_l(hu_nt)  = hu_l
+            Hubbard_n(hu_nt)  = hu_n
+         ENDIF
+         !
+      ENDDO
+      !
+      tahub = .true.
       !
       RETURN
       !
+14    CALL errore ('card_hubbard', ' End of file while parsing Hubbard parameters', 1)
+15    CALL errore ('card_hubbard', ' Error while parsing Hubbard parameters', 1)
+      !
    END SUBROUTINE card_hubbard
    !
+   FUNCTION between( string, delimiter1, delimiter2, n )
+      !
+      ! Return what is found between characters delimiter1 and delimiter2
+      ! if delimiter1 = '' , use beginning of string
+      ! if delimiter2 = '' , use end of string
+      ! if n >= 1 is present, use the n-th occurrence of delimiter1 and
+      ! the first occurence of delimiter2 at the right of it
+      !
+      IMPLICIT NONE
+      CHARACTER(len=:), ALLOCATABLE :: between
+      CHARACTER(len=*), INTENT(IN)  :: string
+      CHARACTER(len=*), INTENT(IN)  :: delimiter1
+      CHARACTER(len=*), INTENT(IN)  :: delimiter2
+      INTEGER, INTENT(IN), OPTIONAL :: n
+      INTEGER :: n_, i_, i1,i2
+      !
+      between = ''
+      n_ = 1
+      IF ( PRESENT(n) ) n_ = n
+      IF ( n_ < 1 ) RETURN
+      !
+      IF ( len(delimiter1) == 0 ) THEN
+         IF ( n_ > 1 ) RETURN
+         i1 = 1
+      ELSE
+         i1 = 1
+         DO i_= 1, n_
+            i1 = index(string(i1:),delimiter1(1:1)) + i1
+         ENDDO
+         IF ( i1 < 2 ) RETURN
+      ENDIF
+      !
+      IF ( len(delimiter2) == 0 ) THEN
+         i2 = len_trim(string(i1:))
+      ELSE
+         i2 = index(string(i1:),delimiter2(1:1)) - 1
+         IF ( i2 < 1 ) RETURN
+      ENDIF
+      !
+      between = adjustl(trim(string(i1:i1+i2-1)))
+      !
+  END FUNCTION between
+  !
+  INTEGER FUNCTION l_spdf ( spdf )
+    !
+    ! Return the value of the orbital quantum number
+    !
+    IMPLICIT NONE
+    CHARACTER(len=1), INTENT(IN) :: spdf
+    !
+    IF ( spdf == 's' .OR. spdf == 'S' ) THEN
+       l_spdf = 0
+    ELSEIF ( spdf == 'p' .OR. spdf == 'P' ) THEN
+       l_spdf = 1
+    ELSEIF ( spdf == 'd' .or. spdf == 'D' ) THEN
+       l_spdf = 2
+    ELSEIF ( spdf == 'f' .OR. spdf == 'F' ) THEN
+       l_spdf = 3
+    ELSE
+       l_spdf =-1
+    ENDIF
+    !
+  END FUNCTION l_spdf
+  !
 END MODULE read_cards_module

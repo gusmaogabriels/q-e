@@ -203,7 +203,6 @@ MODULE read_namelists_module
 
        IF ( prog == 'PW' ) THEN
           starting_ns_eigenvalue = -1.0_DP
-          U_projection_type = 'atomic'
        END IF
        !
        ! .. DFT + U and its extensions
@@ -225,6 +224,7 @@ MODULE read_namelists_module
        lback = -1
        l1back = -1
        hub_pot_fix = .false.
+       nhub = 0
        step_pen=.false.
        A_pen=0.0_DP
        sigma_pen=0.01_DP
@@ -841,7 +841,6 @@ MODULE read_namelists_module
        CALL mp_bcast( starting_charge,        ionode_id, intra_image_comm )
        CALL mp_bcast( starting_magnetization, ionode_id, intra_image_comm )
        CALL mp_bcast( starting_ns_eigenvalue, ionode_id, intra_image_comm )
-       CALL mp_bcast( U_projection_type,      ionode_id, intra_image_comm )
        CALL mp_bcast( lda_plus_U,             ionode_id, intra_image_comm )
        CALL mp_bcast( lda_plus_u_kind,        ionode_id, intra_image_comm )
        CALL mp_bcast( Hubbard_U,              ionode_id, intra_image_comm )
@@ -859,6 +858,7 @@ MODULE read_namelists_module
        CALL mp_bcast( backall,                ionode_id,intra_image_comm )
        CALL mp_bcast( lback,                  ionode_id,intra_image_comm )
        CALL mp_bcast( l1back,                 ionode_id,intra_image_comm )
+       CALL mp_bcast( nhub,                   ionode_id,intra_image_comm )
        CALL mp_bcast( step_pen,               ionode_id, intra_image_comm )
        CALL mp_bcast( A_pen,                  ionode_id, intra_image_comm )
        CALL mp_bcast( sigma_pen,              ionode_id, intra_image_comm )
@@ -1420,6 +1420,8 @@ MODULE read_namelists_module
           CALL errore( sub_name , &
                        & ' ntyp too large, increase NSX ', MAX( ntyp, 1) )
        !
+       IF( nhub < 0 ) &
+          CALL errore( sub_name ,' nhub less than zero ', MAX( nhub, 1) )
        IF( nspin < 1 .OR. nspin > 4 .OR. nspin == 3 ) &
           CALL errore( sub_name ,' nspin out of range ', MAX(nspin, 1 ) )
        !

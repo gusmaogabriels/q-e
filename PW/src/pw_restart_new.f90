@@ -94,7 +94,7 @@ MODULE pw_restart_new
       USE tsvdw_module,         ONLY : EtsvdW
       USE gvecw,                ONLY : ecutwfc
       USE fixed_occ,            ONLY : tfixed_occ, f_inp
-      USE ldaU,                 ONLY : lda_plus_u, lda_plus_u_kind, U_projection, &
+      USE ldaU,                 ONLY : lda_plus_u, lda_plus_u_kind, Hubbard_manifold, &
                                        Hubbard_lmax, Hubbard_l, Hubbard_U, Hubbard_J, &
                                        Hubbard_l_back, Hubbard_l1_back, Hubbard_V, &
                                        Hubbard_alpha, Hubbard_alpha_back, nsg, &
@@ -444,7 +444,7 @@ MODULE pw_restart_new
             CALL qexsd_init_dftU (dftU_obj, NSP = nsp, PSD = upf(1:nsp)%psd, SPECIES = atm(1:nsp), ITYP = ityp(1:nat), &
                                   IS_HUBBARD = is_hubbard, IS_HUBBARD_BACK = is_hubbard_back,  &
                                   BACKALL = backall, HUBB_L_BACK = Hubbard_l_back_opt, HUBB_L1_BACK = Hubbard_l1_back_opt, &
-                                  NONCOLIN = noncolin, LDA_PLUS_U_KIND = lda_plus_u_kind, U_PROJECTION_TYPE = U_projection, &
+                                  NONCOLIN = noncolin, LDA_PLUS_U_KIND = lda_plus_u_kind, U_PROJECTION_TYPE = Hubbard_manifold, &
                                   U =U_opt, U_back = U_back_opt, J0 = J0_opt, J = J_opt, &
                                   alpha = alpha_opt, beta = beta_opt, alpha_back = alpha_back_opt,  & 
                                   starting_ns = starting_ns_eigenvalue, Hub_ns = rho%ns, Hub_ns_nc = rho%ns_nc)
@@ -982,7 +982,7 @@ MODULE pw_restart_new
       USE ldaU,            ONLY : lda_plus_u, lda_plus_u_kind, Hubbard_lmax, Hubbard_lmax_back, &
                                   Hubbard_l, Hubbard_l_back, Hubbard_l1_back, backall, &
                                   Hubbard_U, Hubbard_U_back, Hubbard_J, Hubbard_V, Hubbard_alpha, &
-                                  Hubbard_alpha_back, Hubbard_J0, Hubbard_beta, U_projection
+                                  Hubbard_alpha_back, Hubbard_J0, Hubbard_beta, Hubbard_manifold
       USE funct,           ONLY : set_exx_fraction, set_screening_parameter, &
            set_gau_parameter, enforce_input_dft,  &
            start_exx, dft_is_hybrid
@@ -1084,7 +1084,7 @@ MODULE pw_restart_new
       CALL qexsd_copy_dft ( output_obj%dft, nsp, atm, &
            dft_name, nq1, nq2, nq3, ecutfock, exx_fraction, screening_parameter, &
            exxdiv_treatment, x_gamma_extrapolation, ecutvcut, local_thr, &
-           lda_plus_U, lda_plus_U_kind, U_projection, Hubbard_l, Hubbard_lmax, &
+           lda_plus_U, lda_plus_U_kind, Hubbard_manifold, Hubbard_l, Hubbard_lmax, &
            Hubbard_l_back, Hubbard_l1_back, backall, Hubbard_lmax_back, Hubbard_alpha_back, &
            Hubbard_U, Hubbard_U_back, Hubbard_J0, Hubbard_alpha, Hubbard_beta, Hubbard_J, &
            vdw_corr, scal6, lon_rcut, vdw_isolated )

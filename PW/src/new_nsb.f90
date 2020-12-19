@@ -23,7 +23,7 @@ SUBROUTINE new_nsb( ns )
   USE kinds,                ONLY : DP
   USE ions_base,            ONLY : nat, ityp
   USE klist,                ONLY : nks, ngk
-  USE ldaU,                 ONLY : Hubbard_l, q_ae, wfcU, U_projection, backall, &
+  USE ldaU,                 ONLY : Hubbard_l, q_ae, wfcU, Hubbard_manifold, backall, &
                                    is_hubbard_back, nwfcU, offsetU_back, ldmx_b, &
                                    ldim_back, Hubbard_l_back, Hubbard_l1_back,   &
                                    offsetU_back1
@@ -79,8 +79,8 @@ SUBROUTINE new_nsb( ns )
      !
      ! make the projection
      !
-     IF ( U_projection == 'pseudo' ) THEN
-        CALL errore('new_nsb', 'U_projection = pseudo is not supported',1)
+     IF ( Hubbard_manifold == 'pseudo' ) THEN
+        CALL errore('new_nsb', 'Hubbard_manifold = pseudo is not supported',1)
         !CALL compute_pproj( ik, q_ae, proj )
      ELSE
         IF (nks > 1) CALL get_buffer (wfcU, nwordwfcU, iunhub, ik)

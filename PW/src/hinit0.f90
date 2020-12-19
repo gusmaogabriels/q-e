@@ -21,7 +21,7 @@ SUBROUTINE hinit0()
   USE vlocal,           ONLY : strf
   USE realus,           ONLY : generate_qpointlist, betapointlist, &
                                init_realspace_vars, real_space
-  USE ldaU,             ONLY : lda_plus_U, U_projection
+  USE ldaU,             ONLY : lda_plus_U, Hubbard_manifold
   USE control_flags,    ONLY : tqr, tq_smoothing, tbeta_smoothing, restart
   USE io_global,        ONLY : stdout
   USE noncollin_module, ONLY : report
@@ -40,7 +40,7 @@ SUBROUTINE hinit0()
   IF (tbeta_smoothing) CALL init_us_b0()
   IF (tq_smoothing) CALL init_us_0()
   CALL init_us_1()
-  IF ( lda_plus_U .AND. ( U_projection == 'pseudo' ) ) CALL init_q_aeps()
+  IF ( lda_plus_U .AND. ( Hubbard_manifold == 'pseudo' ) ) CALL init_q_aeps()
   CALL init_at_1()
   !
   IF ( restart .AND. startingconfig == 'file' ) THEN
