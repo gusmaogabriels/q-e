@@ -27,7 +27,7 @@ SUBROUTINE orthoUwfc_k(ik)
   USE ions_base,  ONLY : nat
   USE basis,      ONLY : natomwfc, swfcatom
   USE klist,      ONLY : nks, xk, ngk, igk_k
-  USE ldaU,       ONLY : U_projection, wfcU, nwfcU, copy_U_wfc
+  USE ldaU,       ONLY : Hubbard_manifold, wfcU, nwfcU, copy_U_wfc
   USE wvfct,      ONLY : npwx
   USE uspp,       ONLY : nkb, vkb
   USE becmod,     ONLY : allocate_bec_type, deallocate_bec_type, becp, calbec
@@ -47,27 +47,27 @@ SUBROUTINE orthoUwfc_k(ik)
 
   ALLOCATE (wfcatom( npwx*npol, natomwfc),swfcatom(npwx*npol, natomwfc))    
 
-  IF ( U_projection == "pseudo" ) THEN
+  IF ( Hubbard_manifold == "pseudo" ) THEN
      WRITE(stdout,'(8x,a)') &
        '! Beta functions used for LDA+U Projector'
      RETURN
-  ELSE IF (U_projection=="file") THEN
+  ELSE IF (Hubbard_manifold=="file") THEN
      WRITE(stdout,'(8x,a)') &
        '! LDA+U Projector read from file '
      RETURN
-  ELSE IF (U_projection=="atomic") THEN
+  ELSE IF (Hubbard_manifold=="atomic") THEN
      orthogonalize_wfc = .FALSE.
      normalize_only = .FALSE.
      WRITE(stdout,'(8x,a)') &
        '! Atomic wfc used for LDA+U Projector are NOT orthogonalized'
-  ELSE IF (U_projection=="ortho-atomic") THEN
+  ELSE IF (Hubbard_manifold=="ortho-atomic") THEN
      orthogonalize_wfc = .TRUE.
      normalize_only = .FALSE.    
      WRITE(stdout,'(8x,a)') &
         '! Atomic wfc used for LDA+U Projector are orthogonalized'
      IF (gamma_only) CALL errore('orthoatwfc', &
           'Gamma-only calculation for this case not implemented', 1 )
-  ELSE IF (U_projection=="norm-atomic") THEN
+  ELSE IF (Hubbard_manifold=="norm-atomic") THEN
      orthogonalize_wfc = .TRUE.
      normalize_only = .TRUE.
      WRITE(stdout,'(8x,a)') &
@@ -75,9 +75,8 @@ SUBROUTINE orthoUwfc_k(ik)
      IF (gamma_only) CALL errore('orthoatwfc', &
           'Gamma-only calculation for this case not implemented', 1 )
   ELSE
-     WRITE(stdout,'(8x,a)') & 
-        "! U_projection_type =", U_projection
-     CALL errore ("orthoatwfc"," this U_projection_type is not valid",1)
+     WRITE(stdout,'(8x,a)') "! Hubbard_manifold =", Hubbard_manifold
+     CALL errore ("orthoatwfc"," this Hubbard manifold type is not valid",1)
   END IF
 
   CALL allocate_bec_type (nkb,natomwfc, becp) 
