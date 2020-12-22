@@ -140,8 +140,8 @@ SUBROUTINE input_sanity()
   USE noncollin_module, ONLY : i_cons, noncolin
   USE mp_bands,         ONLY : nbgrp
   USE funct,            ONLY : dft_is_meta, dft_is_hybrid
-  USE ldaU,             ONLY : lda_plus_u, U_projection, lda_plus_u_kind, Hubbard_J0, &
-                               is_hubbard_back, Hubbard_V
+  USE ldaU,             ONLY : lda_plus_u, Hubbard_manifold, lda_plus_u_kind, &
+          Hubbard_J0, is_hubbard_back, Hubbard_V
   !
   IMPLICIT NONE
   !
@@ -195,7 +195,7 @@ SUBROUTINE input_sanity()
   IF (lda_plus_u_kind.EQ.1) CALL errore("hp_readin", &
      & ' The HP code does not support lda_plus_u_kind=1',1)
   !
-  IF (U_projection.NE."atomic" .AND. U_projection.NE."ortho-atomic") &
+  IF (Hubbard_manifold.NE."atomic" .AND. Hubbard_manifold.NE."ortho-atomic") &
      CALL errore("hp_readin", &
      " The HP code for this U_projection_type is not implemented",1)
   !
