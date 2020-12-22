@@ -208,10 +208,6 @@ xerror           real(DP)                                          DEFAULT=0.01
 show_status      logical			                DEFAULT=.false.
                  flag to show the status of the code
 
-U_projection_type character(len=16)			       DEFAULT='atomic'
-		  type of projection for DFT+U calculations
-		  (see the PWscf input file for more info)
-
 time_limit       integer                                          DEFAULT=1.d8
                  time in seconds before stopping the calculation.
                  If XSpectra stops because of the time limit, 
