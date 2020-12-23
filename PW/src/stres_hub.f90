@@ -152,7 +152,7 @@ SUBROUTINE stres_hub ( sigmah )
       !
       ! Set up various quantities, in particular wfcU which 
       ! contains Hubbard-U (ortho-)atomic wavefunctions (without ultrasoft S)
-      CALL orthoUwfc2 (ik)
+      CALL orthoUwfc_k (ik, .TRUE.)
       !
       ! proj=<wfcU|S|evc>
       CALL calbec ( npw, wfcU, spsi, proj)

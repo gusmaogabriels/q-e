@@ -138,7 +138,7 @@ SUBROUTINE force_hub( forceh )
       !
       ! Set up various quantities, in particular wfcU which 
       ! contains Hubbard-U (ortho-)atomic wavefunctions (without ultrasoft S)
-      CALL orthoUwfc2 (ik)
+      CALL orthoUwfc_k (ik, .TRUE.)
       !
       ! proj=<wfcU|S|evc>
       CALL calbec( npw, wfcU, spsi, proj )
@@ -1013,7 +1013,7 @@ SUBROUTINE dprojdtau_k( spsi, alpha, na, ijkb0, ipol, ik, nb_s, nb_e, mykey, dpr
                                     deallocate_bec_type
    USE mp_bands,             ONLY : intra_bgrp_comm
    USE mp,                   ONLY : mp_sum
-   USE basis,                ONLY : natomwfc, wfcatom, swfcatom
+   USE basis,                ONLY : natomwfc, wfcatom
    USE force_mod,            ONLY : eigenval, eigenvect, overlap_inv, doverlap_inv
    !
    IMPLICIT NONE

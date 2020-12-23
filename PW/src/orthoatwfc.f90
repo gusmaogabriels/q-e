@@ -116,15 +116,17 @@ SUBROUTINE orthoUwfc
 END SUBROUTINE orthoUwfc
 !
 !-----------------------------------------------------------------------
-SUBROUTINE orthoUwfc2 (ik)
+SUBROUTINE orthoUwfc_k (ik, lflag)
   !-----------------------------------------------------------------------
   !
   ! For a given k point "ik", this routine computes (ortho-)atomic wavefunctions 
   ! having an associated Hubbard U term * S, for DFT+U(+V) calculations. 
-  ! Also without S (this is then used to computed Hubbard forces 
-  ! and stresses). 
+  ! Also without S (this is then used to computed Hubbard forces and stresses). 
   ! wfcatom and swfcatom must be allocated on input.
   ! Beta functions vkb must be already computed before.
+  !
+  ! lflag=.TRUE.  : wfcU = O^{-1/2}  \phi (w/o ultrasoft S)
+  ! lflag=.FALSE. : wfcU = O^{-1/2} S\phi (w/  ultrasoft S)
   !
   USE kinds,            ONLY : DP
   USE io_global,        ONLY : stdout
@@ -143,6 +145,7 @@ SUBROUTINE orthoUwfc2 (ik)
   IMPLICIT NONE
   !
   INTEGER, INTENT(IN) :: ik ! the k point under consideration
+  LOGICAL, INTENT(IN) :: lflag
   !
   INTEGER :: ibnd, info, i, j, k, na, nb, nt, isym, n, ntemp, m, &
              l, lm, ltot, ntot, ipol, npw
@@ -150,22 +153,22 @@ SUBROUTINE orthoUwfc2 (ik)
   COMPLEX(DP), ALLOCATABLE :: aux(:,:)
 
   IF ( Hubbard_manifold == "pseudo" ) THEN
-     CALL errore ("orthoUwfc2","Hubbard_manifold=pseudo is not supported",1)
+     CALL errore ("orthoUwfc_k","Hubbard_manifold=pseudo is not supported",1)
   ELSE IF (Hubbard_manifold == "file") THEN
-     CALL errore ("orthoUwfc2","Hubbard_manifold=file is not supported",1)
+     CALL errore ("orthoUwfc_k","Hubbard_manifold=file is not supported",1)
   ELSE IF (Hubbard_manifold == "atomic") THEN
      orthogonalize_wfc = .FALSE.
      normalize_only = .FALSE.
   ELSE IF (Hubbard_manifold == "ortho-atomic") THEN
      orthogonalize_wfc = .TRUE.
      normalize_only = .FALSE.    
-     IF (gamma_only) CALL errore('orthoUwfc2', &
+     IF (gamma_only) CALL errore('orthoUwfc_k', &
           'Gamma-only calculation for this case not implemented', 1 )
   ELSE IF (Hubbard_manifold == "norm-atomic") THEN
-     CALL errore ("orthoUwfc2","Hubbard_manifold=norm-atomic is not supported",1)
+     CALL errore ("orthoUwfc_k","Hubbard_manifold=norm-atomic is not supported",1)
   ELSE
      WRITE( stdout,*) "Hubbard_manifold =", Hubbard_manifold
-     CALL errore ("orthoUwfc2"," this Hubbard_manifold is not valid",1)
+     CALL errore ("orthoUwfc_k"," this Hubbard_manifold is not valid",1)
   END IF
   !
   ! Compute atomic wfc at this k (phi)
@@ -181,27 +184,33 @@ SUBROUTINE orthoUwfc2 (ik)
      aux(:,:) = wfcatom(:,:)
   ENDIF
   !
-  IF (orthogonalize_wfc) THEN
-     !
-     ! Number of plane waves at this k point
-     npw = ngk(ik)
-     !
+  ! Number of plane waves at this k point
+  npw = ngk(ik)
+  !
+  IF (orthogonalize_wfc .OR. .NOT.lflag) THEN
      ! Allocate the array becp = <beta|wfcatom>
      CALL allocate_bec_type (nkb,natomwfc, becp)
      CALL calbec (npw, vkb, wfcatom, becp)
      ! Calculate swfcatom = S * phi
      CALL s_psi (npwx, npw, natomwfc, wfcatom, swfcatom)
      CALL deallocate_bec_type (becp)
-     !  
-     ! Compute the overlap matrix
-     ! On the output: wfcatom = O^{-1/2} \phi (no ultrasoft S)
-     CALL ortho_swfc ( npw, normalize_only, natomwfc, wfcatom, swfcatom, .TRUE. )
-     !
   ENDIF
   !
-  ! Copy (ortho-)atomic wavefunctions with Hubbard U term only 
-  ! in wfcU (no ultrasoft S).
-  CALL copy_U_wfc (wfcatom, noncolin)
+  ! Compute the overlap matrix
+  ! lflag=.FALSE. : On the output wfcatom are unchanged, swfcatom = O^{-1/2} S\phi.
+  ! lflag=.TRUE.  : On the output wfcatom = O^{-1/2} \phi (no ultrasoft S), swfcatom are unchanged.
+  IF (orthogonalize_wfc) &
+     CALL ortho_swfc ( npw, normalize_only, natomwfc, wfcatom, swfcatom, lflag )
+  !
+  IF (lflag) THEN
+     ! Copy (ortho-)atomic wavefunctions with Hubbard U term only 
+     ! in wfcU (no ultrasoft S): wfcatom = O^{-1/2} \phi.
+     CALL copy_U_wfc (wfcatom, noncolin)
+  ELSE
+     ! Copy (ortho-)atomic wavefunctions with Hubbard U term only 
+     ! in wfcU (with ultrasoft S): swfcatom = O^{-1/2} S\phi.
+     CALL copy_U_wfc (swfcatom, noncolin)
+  ENDIF
   !
   IF (Hubbard_manifold=="ortho-atomic") THEN
      ! Copy atomic wfcs
@@ -211,7 +220,7 @@ SUBROUTINE orthoUwfc2 (ik)
   !
   RETURN
   !   
-END SUBROUTINE orthoUwfc2
+END SUBROUTINE orthoUwfc_k
 !
 !-----------------------------------------------------------------------
 SUBROUTINE orthoatwfc (orthogonalize_wfc)
