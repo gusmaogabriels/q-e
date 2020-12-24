@@ -197,7 +197,7 @@ SUBROUTINE input_sanity()
   !
   IF (Hubbard_manifold.NE."atomic" .AND. Hubbard_manifold.NE."ortho-atomic") &
      CALL errore("hp_readin", &
-     " The HP code for this U_projection_type is not implemented",1)
+     " The HP code for this Hubbard manifold is not implemented",1)
   !
   IF (noncolin) CALL errore('hp_readin','Noncolliner case is not supported',1)
   !

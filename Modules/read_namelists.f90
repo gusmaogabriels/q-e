@@ -205,7 +205,7 @@ MODULE read_namelists_module
           starting_ns_eigenvalue = -1.0_DP
        END IF
        !
-       ! .. DFT + U and its extensions
+       ! .. DFT + Hubbard
        !
        lda_plus_U = .FALSE.
        lda_plus_u_kind = 0

@@ -2019,6 +2019,11 @@ CONTAINS
       !
       Hubbard_manifold = TRIM(ADJUSTL(Hubbard_manifold))
       !
+      ! Read nhub, i.e. the number of lines in the HUBBARD card
+      CALL read_line( input_line, end_of_file = tend )
+      IF ( tend ) CALL errore( 'card_hubbard', 'End of file reading the HUBBARD card', i )
+      READ (input_line,'(i4)', END=14, ERR=15) nhub
+      !
       ! Read Hubbard parameters, principal and orbital quantum number
       !
       DO i = 1, nhub

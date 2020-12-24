@@ -634,7 +634,7 @@ MODULE input_parameters
              qcutz, q2sigma, lda_plus_U, lda_plus_u_kind,                     &
              !Hubbard_U, Hubbard_J, Hubbard_J0, Hubbard_V, 
              Hubbard_U_back, Hubbard_alpha, Hubbard_alpha_back, Hubbard_beta, &
-             hub_pot_fix, Hubbard_parameters, nhub,                           &
+             hub_pot_fix, Hubbard_parameters,                                 &
              backall, lback, l1back, reserv, reserv_back,                     &
              edir, emaxpos, eopreg, eamp, smearing, starting_ns_eigenvalue,   &
              input_dft, la2F, assume_isolated,                                &
