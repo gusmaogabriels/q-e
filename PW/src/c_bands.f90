@@ -330,7 +330,9 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
              avg_iter = avg_iter + cg_iter
              !
           ELSE IF ( isolve == 2 ) THEN
-             CALL ppcg_gamma( h_psi, s_psi, okvan, h_diag, &
+!civn 
+!            CALL ppcg_gamma( h_psi, s_psi, okvan, h_diag, &
+             CALL ppcg_gamma_idx( h_psi, s_psi, okvan, h_diag, &
                          npwx, npw, nbnd, evc, et(1,ik), btype(1,ik), &
                          0.1d0*ethr, max_ppcg_iter, notconv, ppcg_iter, sbsize , rrstep, iter )
              !

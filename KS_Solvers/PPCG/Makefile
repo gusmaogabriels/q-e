@@ -7,6 +7,7 @@ MODFLAGS= $(MOD_FLAG) ../../ELPA/src $(MOD_FLAG) ../../LAXlib $(MOD_FLAG) ../../
 
 PPCG = \
 ppcg_gamma.o \
+ppcg_gamma_idx.o \
 ppcg_k_idx.o \
 ppcg_k.o
 
