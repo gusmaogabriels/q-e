@@ -99,6 +99,9 @@ SUBROUTINE ppcg_gamma( h_psi, s_psi, overlap, precondition, &
   res_array     = 0.0
   !
   CALL start_clock( 'ppcg_gamma' )
+!civn 
+  write(*,*) 'using ppcg_gamma'
+!
   !
   !  ... Initialization and validation
   !
