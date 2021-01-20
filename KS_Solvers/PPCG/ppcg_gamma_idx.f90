@@ -318,7 +318,7 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
         call start_clock('ppcg:dgemm')
         CALL DGEMM('T','N', l, l, npw2, 2.D0, psi(1,(j-1)*sbsize + 1), npwx2, hpsi(1,(j-1)*sbsize + 1), &
                                                                                  npwx2, 0.D0, K, sbsize3)
-        IF ( gstart == 2 ) CALL DGER( l, l, -1.D0, psi(1,(j-1)*sbsize + 1), npwx2, hpsi, npwx2, K, sbsize3 )
+        IF ( gstart == 2 ) CALL DGER( l, l, -1.D0, psi(1,(j-1)*sbsize + 1), npwx2, hpsi(1,(j-1)*sbsize + 1), npwx2, K, sbsize3 )
         !
         if (overlap) then
            CALL DGEMM('T','N', l, l, npw2, 2.D0, psi(1,(j-1)*sbsize + 1), npwx2, spsi(1,(j-1)*sbsize + 1), npwx2, 0.D0, M, sbsize3)
