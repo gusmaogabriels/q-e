@@ -47,7 +47,7 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
   ! ... local variables
   !
   COMPLEX(DP), ALLOCATABLE ::  hpsi(:,:), spsi(:,:), w(:,:), hw(:,:), sw(:,:), p(:,:), hp(:,:), sp(:,:)
-  COMPLEX(DP)              ::  buffer1(npwx,sbsize)    
+  COMPLEX(DP), ALLOCATABLE ::  buffer1(:, :)  
   REAL(DP), ALLOCATABLE    ::  K(:,:), K_store(:,:), M(:,:), M_store(:,:), work(:)
   INTEGER,  ALLOCATABLE    ::  iwork(:)
   REAL (DP)                ::  trG, trG1, trdif, trtol, lock_tol
@@ -64,7 +64,6 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
                                ! auxiliary indices
   INTEGER                  ::  n_start, n_end, my_n ! auxiliary indices for band group parallelization
   INTEGER                  ::  print_info     ! If > 0 then iteration information is printed
-  REAL(DP), EXTERNAL :: DLANGE, DDOT
 
   EXTERNAL h_psi, s_psi
     ! h_psi(npwx,npw,nvec,psi,hpsi)
@@ -86,7 +85,8 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
   LOGICAL :: force_repmat    ! = .TRUE. to force replication of the Gram matrices for Cholesky
                              ! Needed if the sizes of these  matrices become too small after locking
 
-  REAL                          :: res_array(maxter)
+  REAL(DP)                      :: rnrm 
+  REAL(DP)                      :: res_array(maxter)
 
   INTEGER, PARAMETER :: blocksz = 256 ! used to optimize some omp parallel do loops
   INTEGER :: nblock
@@ -96,11 +96,11 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
 
   nblock = (npw -1) /blocksz + 1      ! used to optimize some omp parallel do loops
 
-  res_array     = 0.0
+  res_array     = 0.0d0
   !
   CALL start_clock( 'ppcg_gamma' )
 !civn 
-  write(*,*) 'using ppcg_gamma_idx'
+  write(stdout,*) 'using ppcg_gamma_idx'
 !
   !
   !  ... Initialization and validation
@@ -108,8 +108,9 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
   CALL laxlib_getval( np_ortho = np_ortho, ortho_cntx = ortho_cntx, &
        ortho_parent_comm = ortho_parent_comm, &
        do_distr_diag_inside_bgrp = do_distr_diag_inside_bgrp )
-
-  print_info = 0 ! 3
+!civn 
+  print_info = 3
+!
   sbsize3 = sbsize*3
   npw2    = npw*2
   npwx2   = npwx*2
@@ -155,7 +156,10 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
   !
   !    w = hpsi - spsi*G
   call start_clock('ppcg:dgemm')
-  call threaded_assign( w, hpsi, npwx, nact, bgrp_root_only=.true. )
+!civn 
+  IF ( my_bgrp_id /= root_bgrp_id ) call threaded_memset( w, 0.d0, 2*npwx*nact )
+  w(1:npwx, 1:nact ) = hpsi(1:npwx, 1:nact )
+!
   CALL divide(inter_bgrp_comm,nbnd,n_start,n_end); my_n = n_end - n_start + 1; !write (*,*) nbnd,n_start,n_end
   if (overlap) then
      if (n_start .le. n_end) &
@@ -175,10 +179,10 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
   call stop_clock('ppcg:lock')
   !
   ! pack the active bands to the first columns (act_idx)
-  CALL reshape_psi(psi, npwx, nact, nbnd, act_idx, buffer1, 1) 
-  CALL reshape_psi(w, npwx, nact, nbnd, act_idx, buffer1, 1) 
-  CALL reshape_psi(hpsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
-  if(overlap) CALL reshape_psi(spsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
+  CALL reshape_array(psi, npwx, nact, nbnd, act_idx, buffer1, 1) 
+  CALL reshape_array(w, npwx, nact, nbnd, act_idx, buffer1, 1) 
+  CALL reshape_array(hpsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
+  if(overlap) CALL reshape_array(spsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
   !
   ! ... Set up iteration parameters after locking
   CALL setup_param
@@ -192,7 +196,7 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
               &  "maxter: ",I5, ", sbsize:  ", I10,", nsb: ", I10 ,", nact: ", I10, ", trtol: ", 1pD9.2 )')  &
                 ethr, npw, nbnd, maxter, sbsize, nsb, nact, trtol
      IF (print_info == 3) THEN
-        CALL print_rnrm
+        res_array(iter) = print_rnrm( w, npw, nbnd, npwx) 
         WRITE(stdout,'("Res. norm:  ", 1pD9.2)') res_array(iter)
      END IF
      FLUSH( stdout )
@@ -547,13 +551,25 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
 !    IF ( (MOD(iter, rr_step) == 0) .AND. (iter /= maxter) ) THEN
     IF ( MOD(iter, rr_step) == 0 ) THEN
        !
-       call start_clock('ppcg:RR')
-       !
        ! unpack the active bands to the sparse order to compute eigenvalues 
-       CALL reshape_psi(psi, npwx, nact, nbnd, act_idx, buffer1, -1) 
-       CALL reshape_psi(hpsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
-       if(overlap) CALL reshape_psi(spsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
-       CALL extract_epairs_dmat(npw, nbnd, npwx, e, psi, hpsi, spsi )
+       CALL reshape_array(psi, npwx, nact, nbnd, act_idx, buffer1, -1) 
+       CALL reshape_array(hpsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
+       CALL reshape_array(w, npwx, nact, nbnd, act_idx, buffer1, -1) 
+       CALL reshape_array(hw, npwx, nact, nbnd, act_idx, buffer1, -1) 
+       CALL reshape_array(p, npwx, nact, nbnd, act_idx, buffer1, -1) 
+       CALL reshape_array(hp, npwx, nact, nbnd, act_idx, buffer1, -1) 
+       if(overlap) then 
+         CALL reshape_array(spsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
+         CALL reshape_array(sw, npwx, nact, nbnd, act_idx, buffer1, -1) 
+         CALL reshape_array(sp, npwx, nact, nbnd, act_idx, buffer1, -1) 
+       end if 
+       !
+       call start_clock('ppcg:RR')
+       if(overlap ) then 
+         CALL extract_epairs_dmat(npw, nbnd, npwx, e, psi, hpsi, spsi )
+       else
+         CALL extract_epairs_dmat(npw, nbnd, npwx, e, psi, hpsi )
+       end if 
        call stop_clock('ppcg:RR')
        !
        IF (print_info >= 2) WRITE(stdout, *) 'RR has been invoked.' ; !CALL flush( stdout )
@@ -580,12 +596,20 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
        call start_clock('ppcg:lock')
        nact_old = nact;
        CALL lock_epairs(npw, nbnd, btype, w, npwx, lock_tol, nact, act_idx)
+       call stop_clock('ppcg:lock')
        !
        ! pack the active bands to the first columns (act_idx)
-       CALL reshape_psi(psi, npwx, nact, nbnd, act_idx, buffer1, 1) 
-       CALL reshape_psi(hpsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
-       if(overlap) CALL reshape_psi(spsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
-       call stop_clock('ppcg:lock')
+       CALL reshape_array(psi, npwx, nact, nbnd, act_idx, buffer1, 1) 
+       CALL reshape_array(hpsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
+       CALL reshape_array(w, npwx, nact, nbnd, act_idx, buffer1, 1) 
+       CALL reshape_array(hw, npwx, nact, nbnd, act_idx, buffer1, 1) 
+       CALL reshape_array(p, npwx, nact, nbnd, act_idx, buffer1, 1) 
+       CALL reshape_array(hp, npwx, nact, nbnd, act_idx, buffer1, 1) 
+       if(overlap) then 
+         CALL reshape_array(spsi, npwx, nact, nbnd, act_idx, buffer1, 1) 
+         CALL reshape_array(sw, npwx, nact, nbnd, act_idx, buffer1, 1) 
+         CALL reshape_array(sp, npwx, nact, nbnd, act_idx, buffer1, 1) 
+       end if 
        !
        ! ... Set up iteration parameters after locking
        CALL setup_param
@@ -683,7 +707,7 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
     IF (print_info >= 1) THEN
        WRITE(stdout, '("iter: ", I5, " nact = ", I5, ", trdif = ", 1pD9.2, ", trtol = ", 1pD9.2 )') iter, nact, trdif, trtol
        IF (print_info == 3) THEN
-          CALL print_rnrm
+          res_array(iter) = print_rnrm( w, npw, nbnd, npwx)    
           WRITE(stdout,'("Res. norm:  ", 1pD9.2)') res_array(iter)
        END IF
        FLUSH( stdout )
@@ -696,7 +720,7 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
  END DO   !---End the main loop
  !
  ! unpack the (no-more-)active bands to the sparse order to compute eigenvalues and return the output psi
- CALL reshape_psi(psi, npwx, nact, nbnd, act_idx, buffer1, -1) 
+ CALL reshape_array(psi, npwx, nact, nbnd, act_idx, buffer1, -1) 
 ! IF (nact > 0) THEN
  IF ( MOD(iter-1, rr_step) /= 0 ) THEN        ! if RR has not just been performed
  ! if nact==0 then the RR has just been performed
@@ -704,9 +728,14 @@ SUBROUTINE ppcg_gamma_idx( h_psi, s_psi, overlap, precondition, &
     call start_clock('ppcg:RR')
     !
     ! unpack the (no-more-)active bands to the sparse order to compute eigenvalues and return the output 
-    CALL reshape_psi(hpsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
-    if(overlap) CALL reshape_psi(spsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
-    CALL extract_epairs_dmat(npw, nbnd, npwx, e, psi, hpsi, spsi )
+    CALL reshape_array(hpsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
+    CALL reshape_array(w, npwx, nact, nbnd, act_idx, buffer1, -1) 
+    if(overlap) then 
+      CALL reshape_array(spsi, npwx, nact, nbnd, act_idx, buffer1, -1) 
+      CALL extract_epairs_dmat(npw, nbnd, npwx, e, psi, hpsi, spsi )
+    else
+      CALL extract_epairs_dmat(npw, nbnd, npwx, e, psi, hpsi )
+    end if 
     call stop_clock('ppcg:RR')
     !
     ! ... Compute residuals
@@ -766,6 +795,8 @@ CONTAINS
     INTEGER :: nx
     ! maximum local block dimension
     !
+    ALLOCATE ( buffer1(npwx,sbsize), stat = ierr )
+    IF (ierr /= 0) CALL errore( 'ppcg ',' cannot allocate buffer1 ', ABS(ierr) )
     ALLOCATE ( hpsi(npwx,nbnd), stat = ierr )
     IF (ierr /= 0) CALL errore( 'ppcg ',' cannot allocate hpsi ', ABS(ierr) )
     if (overlap) ALLOCATE ( spsi(npwx,nbnd), stat = ierr )
@@ -985,6 +1016,7 @@ CONTAINS
      !
      INTEGER         :: j
      REAL(DP)        :: rnrm_store(nbnd), band_tollerance
+     REAL(DP), EXTERNAL :: DDOT
      !
      nact = 0
      ! ... Compute norms of each column of psi
@@ -1135,7 +1167,8 @@ CONTAINS
      !
      INTEGER,     INTENT (IN)  :: npw, npwx, nbnd
      REAL(DP),    INTENT (OUT) :: e(nbnd)
-     COMPLEX(DP), INTENT (INOUT)  :: psi(npwx,nbnd), hpsi(npwx,nbnd), spsi(npwx,nbnd)
+     COMPLEX(DP), INTENT (INOUT)  :: psi(npwx,nbnd), hpsi(npwx,nbnd)
+     COMPLEX(DP), INTENT (INOUT), OPTIONAL :: spsi(npwx,nbnd)
 !     LOGICAL,     INTENT(IN), OPTIONAL :: ortho
      ! ortho = .true.(default) then orthogonalization of psi prior to the RR is enforced
      !
@@ -1152,17 +1185,17 @@ CONTAINS
      INTEGER, ALLOCATABLE :: nrc_ip_store( : )
      INTEGER, ALLOCATABLE :: rank_ip_store( :, : )
      !
-     COMPLEX(DP), ALLOCATABLE  :: psi_t(:, :), hpsi_t(:, :), spsi_t(:, :)
      REAL(DP), ALLOCATABLE     :: vl(:,:)
-     COMPLEX(DP)               :: buffer(npwx,nbnd)
+     COMPLEX(DP), ALLOCATABLE  :: buffer2(:, :)
 !     REAL(DP)                  :: R(nbnd, nbnd)
      INTEGER                   :: nx
 !     LOGICAL                   :: do_orth
      !
-     ALLOCATE ( psi_t(npwx,nbnd), hpsi_t(npwx,nbnd), stat = ierr )
-     IF (ierr /= 0) CALL errore( 'ppcg ',' cannot allocate psi_t and hpsi_t ', ABS(ierr) )
-     if (overlap) ALLOCATE ( spsi_t(npwx,nbnd), stat = ierr )
-     IF (ierr /= 0) CALL errore( 'ppcg ',' cannot allocate spsi_t ', ABS(ierr) )
+     if (.not. overlap .and. present(spsi) .or. &
+         overlap .and. .not. present(spsi) ) Call errore('ppcg : extract_epairs_dmat', 'wrong overlap', 1) 
+     !
+     ALLOCATE ( buffer2(npwx,nbnd), stat = ierr )
+     IF (ierr /= 0) CALL errore( 'ppcg ',' cannot allocate buffer2 ', ABS(ierr) )
      !
      ! Store current distributed matrix descriptor information
      ALLOCATE ( irc_ip_store( np_ortho(1)  ), stat = ierr )
@@ -1235,11 +1268,14 @@ CONTAINS
      !
      ! "Rotate" psi to eigenvectors
      !
-     CALL dgemm_dmat( npw, nbnd, npwx, idesc, ONE,  psi, vl, ZERO, psi_t )
-     CALL dgemm_dmat( npw, nbnd, npwx, idesc, ONE, hpsi, vl, ZERO, hpsi_t )
-     if (overlap) CALL dgemm_dmat( npw, nbnd, npwx, idesc, ONE, spsi, vl, ZERO, spsi_t )
-     !
-     psi   = psi_t ; hpsi  = hpsi_t ;  if (overlap) spsi  = spsi_t
+     CALL dgemm_dmat( npw, nbnd, npwx, idesc, ONE,  psi, vl, ZERO, buffer2 )
+     psi = buffer2
+     CALL dgemm_dmat( npw, nbnd, npwx, idesc, ONE, hpsi, vl, ZERO, buffer2 )
+     hpsi = buffer2
+     if (overlap) then 
+       CALL dgemm_dmat( npw, nbnd, npwx, idesc, ONE, spsi, vl, ZERO, buffer2 )
+       spsi = buffer2
+     end if 
      !
      ! Restore current "global" distributed  matrix descriptor
      !
@@ -1248,7 +1284,7 @@ CONTAINS
      rank_ip = rank_ip_store
      !
      DEALLOCATE ( irc_ip_store, nrc_ip_store, rank_ip_store )
-     DEALLOCATE(psi_t, hpsi_t) ; if (overlap) DEALLOCATE(spsi_t)
+     DEALLOCATE( buffer2 ) 
      DEALLOCATE(Hl, Sl)
      DEALLOCATE(vl)
      !
@@ -1286,6 +1322,7 @@ CONTAINS
     !
     ! This subroutine releases the allocated memory
     !
+    IF ( ALLOCATED(buffer1) )    DEALLOCATE ( buffer1 )
     IF ( ALLOCATED(hpsi) )    DEALLOCATE ( hpsi )
     IF ( ALLOCATED(spsi) )    DEALLOCATE ( spsi )
     IF ( ALLOCATED(w) )       DEALLOCATE ( w )
@@ -1467,190 +1504,27 @@ CONTAINS
      !
   END SUBROUTINE dgemm_dmat
   !
-
-! dmat end
-
-  SUBROUTINE print_rnrm
+  REAL(DP) FUNCTION print_rnrm(w, n, m, nx)
      !
-     !  Compute the subspce residual
+     !  Compute the Frobenius norm of w 
      !
-     COMPLEX(DP), ALLOCATABLE :: psi_t(:,:), hpsi_t(:,:), res(:,:)
-     REAL(DP), ALLOCATABLE    :: G(:,:), work(:)
-     REAL(DP) :: rnrm
-     REAL(DP), EXTERNAL       :: DLANGE, DDOT
-!ev new begin
-integer   :: nwanted, nguard
-nguard = 0 ! 24 ! 50
-!ev new  end
-
-     rnrm  = 0.D0
-!     npw2  = npw*2
-!     npwx2 = npwx*2
-     ALLOCATE(psi_t(npwx,nbnd), hpsi_t(npwx,nbnd), res(npwx,nbnd))
-     ALLOCATE(G(nbnd, nbnd))
-     !
-!!! EV begin comment
-!     psi_t(:,1:nbnd)  = psi(:,1:nbnd)
-!     hpsi_t(:,1:nbnd) = hpsi(:,1:nbnd)
-!     !
-!     !     G = psi_t'hpsi_t
-!     CALL DGEMM('T','N', nbnd, nbnd, npw2, 2.D0, psi_t, npwx2, hpsi_t, npwx2, 0.D0, G, nbnd)
-!     IF ( gstart == 2 ) CALL DGER( nbnd, nbnd, -1.D0, psi_t, npwx2, hpsi_t, npwx2, G, nbnd )
-!     CALL mp_sum( G, intra_bgrp_comm )
-!     !
-!     !    res = hpsi_t - psi*G
-!     res = hpsi_t;
-!     CALL DGEMM('N','N',npw2, nbnd, nbnd, -ONE, psi_t, npwx2, G, nbnd, ONE, res, npwx2)
-!     !
-!     ! ... get the Frobenius norm of the residual
-!     rnrm = DLANGE('F', npw2, nbnd, res, npwx2, work)  ! work is not referenced for Frobenius norm
-!     rnrm = 2.D0*rnrm**2
-!     IF ( gstart == 2 )  rnrm = rnrm - DDOT(nbnd, res, npwx2, res, npwx2)
-!!! EV end comment
-!!!
-!!!
-!  EV begin new
-!   Instead computing the norm of the whole residual, compute it for X(:,nbnd-nguard)
-     nwanted = nbnd - nguard
-     psi_t(:,1:nwanted)  = psi(:,1:nwanted)
-     hpsi_t(:,1:nwanted) = hpsi(:,1:nwanted)
-     !
-     !     G = psi_t'hpsi_t
-     CALL DGEMM('T','N', nwanted, nwanted, npw2, 2.D0, psi_t, npwx2, hpsi_t, npwx2, 0.D0, G, nbnd)
-     IF ( gstart == 2 ) CALL DGER( nwanted, nwanted, -1.D0, psi_t, npwx2, hpsi_t, npwx2, G, nbnd )
-     CALL mp_sum( G, intra_bgrp_comm )
-     !
-     !    res = hpsi_t - psi*G
-     res(:,1:nwanted) = hpsi_t(:,1:nwanted);
-     CALL DGEMM('N','N',npw2, nwanted, nwanted, -ONE, psi_t, npwx2, G, nbnd, ONE, res, npwx2)
-     !
-     ! ... get the Frobenius norm of the residual
-     rnrm = DLANGE('F', npw2, nwanted, res, npwx2, work)  ! work is not referenced for Frobenius norm
-     rnrm = 2.D0*rnrm**2
-     IF ( gstart == 2 )  rnrm = rnrm - DDOT(nwanted, res, npwx2, res, npwx2)
-!   EV end new
-
-     !
+     INTEGER :: n, m, nx
+     COMPLEX(DP), INTENT(IN) :: w(nx, m) 
+     REAL(DP) :: rnrm   
+     REAL(DP), EXTERNAL :: ZLANGE
+     ! 
+     rnrm = 0.0d0
+     rnrm = ZLANGE('F', n, m, w, nx, w)  ! work is not referenced for Frobenius norm
+     rnrm = rnrm**2
      CALL mp_sum( rnrm, intra_bgrp_comm )
-     !
      rnrm = SQRT(ABS(rnrm))
-     res_array(iter) = rnrm
+     print_rnrm = rnrm
+     !   
+     RETURN
      !
-     DEALLOCATE(psi_t, hpsi_t, res)
-     DEALLOCATE(G)
-     !
-
-!     !CALL flush( stdout )
-     !
-  END SUBROUTINE print_rnrm
-
-!- routines to perform threaded assignements
-
-  SUBROUTINE threaded_assign(array_out, array_in, kdimx, nact, idx, bgrp_root_only)
-  ! 
-  !  assign (copy) a complex array in a threaded way
-  !
-  !  array_out( 1:kdimx, 1:nact ) = array_in( 1:kdimx, 1:nact )       or
-  !
-  !  array_out( 1:kdimx, 1:nact ) = array_in( 1:kdimx, idx(1:nact) )
-  !
-  !  if the index array idx is given
-  !
-  !  if  bgrp_root_only is present and .true. the assignement is made only by the 
-  !  MPI root process of the bgrp and array_out is zeroed otherwise
-  !
-  USE util_param,   ONLY : DP
-  !
-  IMPLICIT NONE
-  !
-  INTEGER, INTENT(IN)      :: kdimx, nact
-  COMPLEX(DP), INTENT(OUT) :: array_out( kdimx, nact )
-  COMPLEX(DP), INTENT(IN)  :: array_in ( kdimx, * )
-  INTEGER, INTENT(IN), OPTIONAL :: idx( * )
-  LOGICAL, INTENT(IN), OPTIONAL :: bgrp_root_only
-  !
-  INTEGER, PARAMETER :: blocksz = 256
-  INTEGER :: nblock
-
-  INTEGER :: i, j
-  !
-  IF (kdimx <=0 .OR. nact<= 0) RETURN
-  !
-  IF (present(bgrp_root_only) ) THEN
-     IF (bgrp_root_only .AND. ( my_bgrp_id /= root_bgrp_id ) ) THEN
-        call threaded_memset( array_out, 0.d0, 2*kdimx*nact )
-        RETURN
-     END IF
-  END IF
-
-  nblock = (kdimx - 1)/blocksz  + 1
-
-  IF (present(idx) ) THEN
-     !$omp parallel do collapse(2)
-     DO i=1, nact ; DO j=1,nblock
-        array_out(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), i ) = array_in(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), idx( i ) ) 
-     ENDDO ; ENDDO
-     !$omp end parallel do
-  ELSE
-     !$omp parallel do collapse(2)
-     DO i=1, nact ; DO j=1,nblock
-        array_out(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), i ) = array_in(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), i ) 
-     ENDDO ; ENDDO
-     !$omp end parallel do
-  END IF
-  !
-  END SUBROUTINE threaded_assign
-
-  SUBROUTINE threaded_backassign(array_out, idx, array_in, kdimx, nact, a2_in )
-  ! 
-  !  assign (copy) a complex array in a threaded way
-  !
-  !  array_out( 1:kdimx, idx(1:nact) ) = array_in( 1:kdimx, 1:nact )      or
-  !
-  !  array_out( 1:kdimx, idx(1:nact) ) = array_in( 1:kdimx, 1:nact )  + a2_in( 1:kdimx, idx(1:nact) (
-  !  if a2_in is present
-  !
-  !  the index array idx is mandatory otherwise one could use previous routine)
-  !
-  USE util_param,   ONLY : DP
-  !
-  IMPLICIT NONE
-  !
-  INTEGER, INTENT(IN)      :: kdimx, nact
-  COMPLEX(DP), INTENT(INOUT) :: array_out( kdimx, * ) ! we don't want to mess with un referenced columns
-  COMPLEX(DP), INTENT(IN)  :: array_in ( kdimx, nact )
-  COMPLEX(DP), INTENT(IN), OPTIONAL  :: a2_in ( kdimx, * )
-  INTEGER, INTENT(IN)      :: idx( * )
-  !
-  INTEGER, PARAMETER :: blocksz = 256
-  INTEGER :: nblock
-
-  INTEGER :: i, j
-  !
-  IF (kdimx <=0 .OR. nact<= 0) RETURN
-  !
-
-  nblock = (kdimx - 1)/blocksz  + 1
-
-  IF ( present(a2_in) ) THEN
-     !$omp parallel do collapse(2)
-     DO i=1, nact ; DO j=1,nblock
-        array_out(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), idx( i ) ) = &
-            array_in(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), i )     + & 
-                a2_in(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), idx( i ) ) 
-     ENDDO ; ENDDO
-     !$omp end parallel do
-  ELSE
-     !$omp parallel do collapse(2)
-     DO i=1, nact ; DO j=1,nblock
-        array_out(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), idx( i ) ) = array_in(1+(j-1)*blocksz:MIN(j*blocksz,kdimx), i ) 
-     ENDDO ; ENDDO
-     !$omp end parallel do
-  END IF
-  !
-  END SUBROUTINE threaded_backassign
-  !
-  SUBROUTINE reshape_psi(psi, kdimx, nact, nbnd, act_idx, buffer, isgn)
+   END FUNCTION print_rnrm
+   !
+  SUBROUTINE reshape_array(psi, kdimx, nact, nbnd, act_idx, buffer, isgn)
   IMPLICIT NONE
     INTEGER, INTENT(IN) :: kdimx, nact, nbnd, act_idx(nbnd), isgn
     COMPLEX(DP), INTENT(INOUT) :: psi(kdimx, nbnd)  
@@ -1674,11 +1548,11 @@ nguard = 0 ! 24 ! 50
         end if 
       end do 
     else
-      Call errore("reshape_psi", "wrong isgn", 1)
+      Call errore("reshape_array", "wrong isgn", 1)
     endif 
 
     RETURN  
 
-  END SUBROUTINE reshape_psi
+  END SUBROUTINE reshape_array
 
 END SUBROUTINE ppcg_gamma_idx
