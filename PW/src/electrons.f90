@@ -569,7 +569,12 @@ SUBROUTINE electrons_scf ( printout, exxen )
         ethr = MIN( ethr, 0.1D0*dr2 / MAX( 1.D0, nelec ) )
         ! ... do not allow convergence threshold to become too small:
         ! ... iterative diagonalization may become unstable
-        ethr = MAX( ethr, 1.D-13 )
+!civn 
+!       ethr = MAX( ethr, 1.D-13 )
+        IF( ethr.le.1.D-13) THEN 
+          ethr = 1.D-13
+          tr2 = ethr * nelec * 10.0D0
+        END IF
         !
      ENDIF
      !

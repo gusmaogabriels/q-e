@@ -368,7 +368,14 @@ SUBROUTINE setup()
      !
      ! ... do not allow convergence threshold of scf and nscf to become too small 
      ! 
-     IF ( ethr == 0.D0 ) ethr = MAX(1.D-13, 0.1D0 * MIN( 1.D-2, tr2 / nelec ))
+!civn 
+!    IF ( ethr == 0.D0 ) ethr = MAX(1.D-13, 0.1D0 * MIN( 1.D-2, tr2 / nelec ))
+     IF ( ethr == 0.D0 ) ethr = 0.1D0 * MIN( 1.D-2, tr2 / nelec )
+     IF (ethr .lt. 1D-13) THEN
+       ethr = 1D-13
+       tr2 = ethr * nelec * 10.0D0 
+     END IF
+!
      !
   ELSE
      !
